@@ -10,7 +10,7 @@ jobs:
   check:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select Xcode
         run: |
@@ -41,3 +41,9 @@ jobs:
             -destination 'platform=macOS,arch=arm64' \
             -only-testing:DGXPulseTests \
             CODE_SIGNING_ALLOWED=NO
+
+      # Xcode asset tooling (ibtoold) sometimes outlives the job on GHA runners.
+      - name: Cleanup Xcode helper processes
+        if: always()
+        run: |
+          killall ibtoold 2>/dev/null || true
