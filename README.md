@@ -8,6 +8,8 @@ Native macOS menu bar monitor for your [NVIDIA DGX Spark](https://www.nvidia.com
 - [NVIDIA Sync](https://docs.nvidia.com/sync/latest/index.html) connected to your Spark (LAN or Tailscale), **or** a manual tunnel to the dashboard
 - DGX Dashboard credentials (same as the web UI)
 
+DGXPulse is **not App Sandboxed**. It needs to read NVIDIA Sync’s local device config and run the Sync CLI (`nvsync status`) to learn which localhost port currently maps to the remote dashboard. That is intentional for a local companion utility.
+
 ## First run
 
 1. Connect to your Spark in NVIDIA Sync (open DGX Dashboard once if needed).

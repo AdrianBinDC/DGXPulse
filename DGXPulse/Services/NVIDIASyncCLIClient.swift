@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Talks to the NVIDIA Sync CLI (`nvsync status` / `nvsync open`).
@@ -36,7 +37,6 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
 
         let aliases = discoveredAliases()
         guard !aliases.isEmpty else {
-            logger.info("No NVIDIA Sync device aliases found", category: .endpoint)
             return []
         }
 
@@ -106,14 +106,33 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
     private func discoveredAliases() -> [String] {
         var aliases: [String] = []
 
-        if let data = try? Data(contentsOf: stateStoreURL) {
+        do {
+            let data = try Data(contentsOf: stateStoreURL)
             aliases.append(contentsOf: NVIDIASyncStateStoreParser.aliases(fromJSON: data))
+        } catch {
+            logger.info(
+                "Could not read Sync state store at \(stateStoreURL.path): \(error.localizedDescription)",
+                category: .endpoint
+            )
         }
 
-        if let contents = try? String(contentsOf: sshConfigURL, encoding: .utf8) {
+        do {
+            let contents = try String(contentsOf: sshConfigURL, encoding: .utf8)
             for alias in NVIDIASyncSSHConfigParser.aliases(from: contents) where !aliases.contains(alias) {
                 aliases.append(alias)
             }
+        } catch {
+            logger.info(
+                "Could not read Sync ssh_config at \(sshConfigURL.path): \(error.localizedDescription)",
+                category: .endpoint
+            )
+        }
+
+        if aliases.isEmpty {
+            logger.info(
+                "No NVIDIA Sync device aliases found under \(NVIDIASyncPaths.applicationSupportSync.path)",
+                category: .endpoint
+            )
         }
 
         return aliases
@@ -121,8 +140,17 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
 }
 
 enum NVIDIASyncPaths {
+    /// Real user home (not an App Sandbox container). Prefer passwd over
+    /// `FileManager.homeDirectoryForCurrentUser`, which is containerized when sandboxed.
+    static var userHomeURL: URL {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: dir), isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
     static var applicationSupportSync: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        userHomeURL
             .appendingPathComponent("Library/Application Support/NVIDIA/Sync", isDirectory: true)
     }
 
