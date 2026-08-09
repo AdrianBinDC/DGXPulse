@@ -42,10 +42,24 @@ struct PreferenceStore: Sendable {
     var historyRetentionHours: Double {
         get {
             let value = defaults.double(forKey: AppPreferenceKey.historyRetentionHours)
-            return value > 0 ? value : 6
+            return value > 0 ? value : 24
         }
         nonmutating set {
             defaults.set(newValue, forKey: AppPreferenceKey.historyRetentionHours)
+        }
+    }
+
+    var historyRange: HistoryRange {
+        get {
+            guard let raw = defaults.string(forKey: AppPreferenceKey.historyRange),
+                let range = HistoryRange(rawValue: raw)
+            else {
+                return .fiveMinutes
+            }
+            return range
+        }
+        nonmutating set {
+            defaults.set(newValue.rawValue, forKey: AppPreferenceKey.historyRange)
         }
     }
 }

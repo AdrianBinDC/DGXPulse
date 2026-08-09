@@ -6,12 +6,27 @@ struct DetailDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Welcome")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("Your DGX Dashboard")
-                        .font(.largeTitle.bold())
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Welcome")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("Your DGX Dashboard")
+                            .font(.largeTitle.bold())
+                    }
+
+                    Spacer()
+
+                    Picker("Range", selection: $viewModel.selectedHistoryRange) {
+                        ForEach(HistoryRange.allCases) { range in
+                            Text(range.title).tag(range)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 360)
+                    .onChange(of: viewModel.selectedHistoryRange) { _, _ in
+                        viewModel.historyRangeChanged()
+                    }
                 }
 
                 statusBanner
@@ -24,7 +39,7 @@ struct DetailDashboardView: View {
                     secondaryText: memorySecondary,
                     samples: viewModel.history,
                     chartValue: \.memoryUsedGB,
-                    yLabel: String(format: "%.2fGB", viewModel.latestSample?.memoryTotalGB ?? 128)
+                    yLabel: String(format: "%.0fGB", viewModel.latestSample?.memoryTotalGB ?? 128)
                 )
 
                 MetricPanel(

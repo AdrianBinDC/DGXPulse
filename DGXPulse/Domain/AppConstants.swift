@@ -11,4 +11,5 @@ enum AppPreferenceKey {
     static let lastKnownBaseURL = "DGXPulse.LastKnownBaseURL"
     static let username = "DGXPulse.DashboardUsername"
     static let historyRetentionHours = "DGXPulse.HistoryRetentionHours"
+    static let historyRange = "DGXPulse.HistoryRange"
 }

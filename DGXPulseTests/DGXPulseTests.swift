@@ -20,9 +20,10 @@ struct TelemetryParserTests {
         let data = try FixtureData.load("gpu_telemetry.json")
         let sample = try TelemetryParser.parseSample(from: data, at: Date(timeIntervalSince1970: 0))
         #expect(sample.gpuUtilizationPercent == 0)
-        #expect(sample.memoryTotalMB == 128_000)
-        #expect(sample.memoryUsedMB == 128_000 - 24_230)
-        #expect(abs(sample.memoryUsedGB - 103.77) < 0.001)
+        #expect(sample.memoryTotalMB == 131_072)
+        #expect(sample.memoryUsedMB == 131_072 - 27_302)
+        #expect(abs(sample.memoryUsedGB - 103.77) < 0.01)
+        #expect(abs(sample.memoryTotalGB - 128) < 0.001)
     }
 
     @Test func parsesLoginSuccessFixture() throws {
@@ -80,5 +81,21 @@ struct HistoryStoreTests {
 struct TokenRedactorTests {
     @Test func redacts() {
         #expect(TokenRedactor.redact("abcdefghij") == "…ghij")
+    }
+}
+
+struct HistoryDownsamplerTests {
+    @Test func reducesPointCount() {
+        let samples = (0..<1_000)
+            .map { index in
+                MetricsSample(
+                    timestamp: Date(timeIntervalSince1970: Double(index)),
+                    gpuUtilizationPercent: Double(index % 100),
+                    memoryUsedMB: 50_000,
+                    memoryTotalMB: 131_072
+                )
+            }
+        let reduced = HistoryDownsampler.downsample(samples, maxPoints: 100)
+        #expect(reduced.count == 100)
     }
 }

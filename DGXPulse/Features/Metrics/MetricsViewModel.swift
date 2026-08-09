@@ -15,6 +15,7 @@ final class MetricsViewModel {
     var username: String = ""
     var password: String = ""
     var overrideBaseURLString: String = ""
+    var selectedHistoryRange: HistoryRange = .fiveMinutes
 
     private let dependencies: AppDependencies
     private var streamTask: Task<Void, Never>?
@@ -45,6 +46,7 @@ final class MetricsViewModel {
 
     func bootstrap() async {
         overrideBaseURLString = dependencies.preferences.overrideBaseURL?.absoluteString ?? ""
+        selectedHistoryRange = dependencies.preferences.historyRange
         if let savedUsername = await dependencies.sessionStore.loadUsername() {
             username = savedUsername
         }
@@ -106,7 +108,9 @@ final class MetricsViewModel {
         overrideBaseURLString = ""
         dependencies.preferences.overrideBaseURL = nil
         dependencies.preferences.lastKnownBaseURL = nil
-        dependencies.preferences.historyRetentionHours = 6
+        dependencies.preferences.historyRetentionHours = 24
+        selectedHistoryRange = .fiveMinutes
+        dependencies.preferences.historyRange = .fiveMinutes
     }
 
     func refreshDiagnostics() {
@@ -117,6 +121,11 @@ final class MetricsViewModel {
 
     func openDetail() {
         isDetailPresented = true
+        Task { await refreshHistory() }
+    }
+
+    func historyRangeChanged() {
+        dependencies.preferences.historyRange = selectedHistoryRange
         Task { await refreshHistory() }
     }
 
@@ -268,10 +277,13 @@ final class MetricsViewModel {
     }
 
     private func refreshHistory() async {
-        let retention = dependencies.preferences.historyRetentionHours
-        let since = dependencies.clock.now().addingTimeInterval(-retention * 3_600)
+        let since = dependencies.clock.now().addingTimeInterval(-selectedHistoryRange.duration)
         do {
-            history = try await dependencies.historyStore.recent(since: since)
+            let samples = try await dependencies.historyStore.recent(since: since)
+            history = HistoryDownsampler.downsample(
+                samples,
+                maxPoints: selectedHistoryRange.maxChartPoints
+            )
         } catch {
             dependencies.logger.error("History read failed: \(error.localizedDescription)", category: .history)
         }

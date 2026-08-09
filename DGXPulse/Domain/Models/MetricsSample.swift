@@ -6,8 +6,12 @@ struct MetricsSample: Equatable, Sendable {
     var memoryUsedMB: Double
     var memoryTotalMB: Double
 
+    /// Matches DGX Dashboard's used-memory conversion (`MB / 1000`).
     var memoryUsedGB: Double { memoryUsedMB / 1_000 }
-    var memoryTotalGB: Double { memoryTotalMB / 1_000 }
+
+    /// Dashboard fields are MiB; divide by 1024 so 128 GiB systems show 128 GB total.
+    var memoryTotalGB: Double { memoryTotalMB / 1_024 }
+
     var memoryUtilizationPercent: Double {
         guard memoryTotalMB > 0 else { return 0 }
         return (memoryUsedMB / memoryTotalMB) * 100
