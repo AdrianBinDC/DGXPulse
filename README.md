@@ -4,7 +4,7 @@ Native macOS menu bar monitor for your [NVIDIA DGX Spark](https://www.nvidia.com
 
 ## Requirements
 
-- macOS 26.4+
+- macOS 15.0+
 - [NVIDIA Sync](https://docs.nvidia.com/sync/latest/index.html) connected to your Spark (LAN or Tailscale), **or** a manual tunnel to the dashboard
 - DGX Dashboard credentials (same as the web UI)
 

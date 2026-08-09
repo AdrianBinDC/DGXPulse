@@ -38,6 +38,6 @@ jobs:
           xcodebuild test \
             -project DGXPulse.xcodeproj \
             -scheme DGXPulse \
-            -destination 'platform=macOS' \
+            -destination 'platform=macOS,arch=arm64' \
             -only-testing:DGXPulseTests \
             CODE_SIGNING_ALLOWED=NO
