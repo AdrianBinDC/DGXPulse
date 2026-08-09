@@ -71,7 +71,7 @@ struct MetricHistoryChart: View {
                     x: .value("Time", sample.timestamp),
                     y: .value(title, sample[keyPath: value])
                 )
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(.monotone)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [Color.blue.opacity(0.45), Color.blue.opacity(0.05)],
@@ -84,7 +84,7 @@ struct MetricHistoryChart: View {
                     x: .value("Time", sample.timestamp),
                     y: .value(title, sample[keyPath: value])
                 )
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(.monotone)
                 .foregroundStyle(Color.blue)
                 .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
             }
@@ -102,7 +102,6 @@ struct MetricHistoryChart: View {
         }
         .chartXAxis(.hidden)
         .frame(minHeight: 120)
-        .animation(.easeInOut(duration: 0.25), value: samples.count)
     }
 }
 

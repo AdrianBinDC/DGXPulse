@@ -21,6 +21,7 @@ final class MetricsViewModel {
     private var streamTask: Task<Void, Never>?
     private var lastPublishedMenuBarKey: String?
     private var lastMenuBarPublish: Date?
+    private var lastHistoryPublish: Date?
     private var reconnectAttempt = 0
 
     var isSignedIn: Bool {
@@ -269,20 +270,27 @@ final class MetricsViewModel {
             let cutoff = dependencies.clock.now().addingTimeInterval(-retention * 3_600)
             try await dependencies.historyStore.prune(olderThan: cutoff)
             if isDetailPresented {
-                await refreshHistory()
+                await refreshHistory(force: false)
             }
         } catch {
             dependencies.logger.error("History write failed: \(error.localizedDescription)", category: .history)
         }
     }
 
-    private func refreshHistory() async {
-        let since = dependencies.clock.now().addingTimeInterval(-selectedHistoryRange.duration)
+    private func refreshHistory(force: Bool = true) async {
+        let now = dependencies.clock.now()
+        if !force, let lastHistoryPublish, now.timeIntervalSince(lastHistoryPublish) < 1 {
+            return
+        }
+        lastHistoryPublish = now
+
+        let since = now.addingTimeInterval(-selectedHistoryRange.duration)
         do {
             let samples = try await dependencies.historyStore.recent(since: since)
             history = HistoryDownsampler.downsample(
                 samples,
-                maxPoints: selectedHistoryRange.maxChartPoints
+                range: selectedHistoryRange,
+                now: now
             )
         } catch {
             dependencies.logger.error("History read failed: \(error.localizedDescription)", category: .history)

@@ -85,17 +85,38 @@ struct TokenRedactorTests {
 }
 
 struct HistoryDownsamplerTests {
-    @Test func reducesPointCount() {
-        let samples = (0..<1_000)
-            .map { index in
+    @Test func keepsCompletedBucketsStableWhenAppending() {
+        let range = HistoryRange.fiveMinutes
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        var samples: [MetricsSample] = []
+        for second in 0..<20 {
+            samples.append(
                 MetricsSample(
-                    timestamp: Date(timeIntervalSince1970: Double(index)),
-                    gpuUtilizationPercent: Double(index % 100),
+                    timestamp: base.addingTimeInterval(Double(second)),
+                    gpuUtilizationPercent: Double(second),
                     memoryUsedMB: 50_000,
                     memoryTotalMB: 131_072
                 )
-            }
-        let reduced = HistoryDownsampler.downsample(samples, maxPoints: 100)
-        #expect(reduced.count == 100)
+            )
+        }
+
+        let first = HistoryDownsampler.downsample(samples, range: range, now: base.addingTimeInterval(20))
+        samples.append(
+            MetricsSample(
+                timestamp: base.addingTimeInterval(21),
+                gpuUtilizationPercent: 99,
+                memoryUsedMB: 50_000,
+                memoryTotalMB: 131_072
+            )
+        )
+        let second = HistoryDownsampler.downsample(samples, range: range, now: base.addingTimeInterval(21))
+
+        #expect(first.count >= 2)
+        #expect(second.count >= first.count)
+        // All but possibly the newest bucket should match exactly.
+        let shared = min(first.count, second.count) - 1
+        for index in 0..<shared {
+            #expect(first[index] == second[index])
+        }
     }
 }

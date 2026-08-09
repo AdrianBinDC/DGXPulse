@@ -32,49 +32,72 @@ enum HistoryRange: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Soft cap so Charts stays responsive on longer windows.
-    var maxChartPoints: Int {
+    /// Fixed wall-clock bucket width so older points stay put as new samples arrive.
+    var bucketDuration: TimeInterval {
         switch self {
-        case .oneMinute: return 120
-        case .fiveMinutes: return 180
-        case .thirtyMinutes: return 240
-        case .oneHour: return 300
-        case .twelveHours: return 360
-        case .twentyFourHours: return 480
+        case .oneMinute: return 1
+        case .fiveMinutes: return 2
+        case .thirtyMinutes: return 8
+        case .oneHour: return 12
+        case .twelveHours: return 120
+        case .twentyFourHours: return 180
         }
     }
 }
 
 enum HistoryDownsampler {
-    static func downsample(_ samples: [MetricsSample], maxPoints: Int) -> [MetricsSample] {
-        guard samples.count > maxPoints, maxPoints > 1 else { return samples }
+    /// Averages samples into absolute time buckets. Completed buckets are stable;
+    /// only the current open bucket moves as new telemetry arrives.
+    static func downsample(
+        _ samples: [MetricsSample],
+        range: HistoryRange,
+        now: Date = .now
+    ) -> [MetricsSample] {
+        guard !samples.isEmpty else { return [] }
 
-        let bucketSize = Double(samples.count) / Double(maxPoints)
-        var result: [MetricsSample] = []
-        result.reserveCapacity(maxPoints)
+        let bucket = max(range.bucketDuration, 0.001)
+        let windowStart = now.addingTimeInterval(-range.duration)
+        var buckets: [Int: BucketAccumulator] = [:]
 
-        var index = 0.0
-        while result.count < maxPoints && Int(index) < samples.count {
-            let start = Int(index)
-            let end = min(samples.count, Int(index + bucketSize))
-            let slice = samples[start..<end]
-            guard !slice.isEmpty else { break }
-
-            let gpu = slice.map(\.gpuUtilizationPercent).reduce(0, +) / Double(slice.count)
-            let used = slice.map(\.memoryUsedMB).reduce(0, +) / Double(slice.count)
-            let total = slice.map(\.memoryTotalMB).reduce(0, +) / Double(slice.count)
-            let timestamp = slice[slice.index(slice.startIndex, offsetBy: slice.count / 2)].timestamp
-            result.append(
-                MetricsSample(
-                    timestamp: timestamp,
-                    gpuUtilizationPercent: gpu,
-                    memoryUsedMB: used,
-                    memoryTotalMB: total
-                )
-            )
-            index += bucketSize
+        for sample in samples where sample.timestamp >= windowStart {
+            let index = Int(floor(sample.timestamp.timeIntervalSince1970 / bucket))
+            var accumulator = buckets[index] ?? BucketAccumulator(index: index, bucketDuration: bucket)
+            accumulator.add(sample)
+            buckets[index] = accumulator
         }
 
-        return result
+        return buckets.keys.sorted().compactMap { buckets[$0]?.averagedSample }
+    }
+}
+
+private struct BucketAccumulator {
+    let index: Int
+    let bucketDuration: TimeInterval
+    private var count = 0
+    private var gpu = 0.0
+    private var used = 0.0
+    private var total = 0.0
+
+    init(index: Int, bucketDuration: TimeInterval) {
+        self.index = index
+        self.bucketDuration = bucketDuration
+    }
+
+    mutating func add(_ sample: MetricsSample) {
+        count += 1
+        gpu += sample.gpuUtilizationPercent
+        used += sample.memoryUsedMB
+        total += sample.memoryTotalMB
+    }
+
+    var averagedSample: MetricsSample? {
+        guard count > 0 else { return nil }
+        let midpoint = (Double(index) + 0.5) * bucketDuration
+        return MetricsSample(
+            timestamp: Date(timeIntervalSince1970: midpoint),
+            gpuUtilizationPercent: gpu / Double(count),
+            memoryUsedMB: used / Double(count),
+            memoryTotalMB: total / Double(count)
+        )
     }
 }
