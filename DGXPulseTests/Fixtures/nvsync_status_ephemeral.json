@@ -1,0 +1,24 @@
+{
+  "status": "RUNNING",
+  "error": "",
+  "dialer": "direct-connect",
+  "dashboard_installed": true,
+  "tailscale": {
+    "error": null,
+    "enrolled": true,
+    "name": "example",
+    "auth_expiry": "2027-01-17T01:59:30Z"
+  },
+  "ports": {
+    "11000": {
+      "local_port": 61704,
+      "status": "OPENED",
+      "error": ""
+    },
+    "11002": {
+      "local_port": 11002,
+      "status": "OPENED",
+      "error": ""
+    }
+  }
+}

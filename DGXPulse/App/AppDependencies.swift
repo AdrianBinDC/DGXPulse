@@ -26,9 +26,15 @@ struct AppDependencies {
             logger: logger
         )
 
+        let syncTunnels = NVIDIASyncCLIClient(logger: logger)
         return AppDependencies(
             httpClient: http,
-            endpointResolver: LocalDashboardEndpointResolver(http: http, preferences: preferences, logger: logger),
+            endpointResolver: LocalDashboardEndpointResolver(
+                http: http,
+                preferences: preferences,
+                logger: logger,
+                syncTunnels: syncTunnels
+            ),
             sessionStore: KeychainSessionStore(),
             metricsSource: DashboardSSEMetricsSource(http: http, logger: logger, clock: SystemClock()),
             historyStore: history,

@@ -4,11 +4,18 @@ struct DashboardSSEMetricsSource: MetricsSource {
     private let http: any HTTPClient
     private let logger: any Logging
     private let clock: any Clock
+    private let idleTimeout: Duration
 
-    init(http: any HTTPClient, logger: any Logging, clock: any Clock) {
+    init(
+        http: any HTTPClient,
+        logger: any Logging,
+        clock: any Clock,
+        idleTimeout: Duration = DashboardPorts.telemetryIdleTimeout
+    ) {
         self.http = http
         self.logger = logger
         self.clock = clock
+        self.idleTimeout = idleTimeout
     }
 
     func events(token: String, baseURL: URL) -> AsyncStream<MetricsEvent> {
@@ -20,6 +27,7 @@ struct DashboardSSEMetricsSource: MetricsSource {
                     )
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    // Prefer session-level request timeout; keep request timeout generous.
                     request.timeoutInterval = 60
 
                     logger.debug("Opening telemetry stream", category: .telemetry)
@@ -38,22 +46,30 @@ struct DashboardSSEMetricsSource: MetricsSource {
 
                     guard httpResponse.statusCode == 200 else {
                         continuation.yield(
-                            .failure(.server("Unable to open telemetry stream (HTTP \(httpResponse.statusCode))."))
+                            .failure(
+                                .server(
+                                    "Unable to open telemetry stream (HTTP \(httpResponse.statusCode))."
+                                )
+                            )
                         )
                         continuation.finish()
                         return
                     }
 
                     continuation.yield(.connected)
-                    try await Self.consume(
+                    try await Self.consumeWithIdleWatchdog(
                         bytes: bytes,
                         clock: clock,
+                        idleTimeout: idleTimeout,
                         logger: logger,
                         continuation: continuation
                     )
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.yield(.failure(.cancelled))
+                    continuation.finish()
+                } catch let failure as ConnectionFailure {
+                    continuation.yield(.failure(failure))
                     continuation.finish()
                 } catch {
                     let failure = (error as? ConnectionFailure) ?? .unreachable(baseURL.absoluteString)
@@ -68,8 +84,52 @@ struct DashboardSSEMetricsSource: MetricsSource {
         }
     }
 
+    private static func consumeWithIdleWatchdog(
+        bytes: URLSession.AsyncBytes,
+        clock: any Clock,
+        idleTimeout: Duration,
+        logger: any Logging,
+        continuation: AsyncStream<MetricsEvent>.Continuation
+    ) async throws {
+        let activity = StreamActivityClock(clock: clock)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await Self.consume(
+                    bytes: bytes,
+                    activity: activity,
+                    clock: clock,
+                    logger: logger,
+                    continuation: continuation
+                )
+            }
+            group.addTask {
+                while !Task.isCancelled {
+                    try await Task.sleep(for: .seconds(5))
+                    if await activity.isIdle(longerThan: idleTimeout) {
+                        logger.error(
+                            "Telemetry stream idle for \(idleTimeout); reconnecting",
+                            category: .telemetry
+                        )
+                        throw ConnectionFailure.tunnelUnavailable
+                    }
+                }
+            }
+
+            // First failure/completion cancels the peer (idle watchdog or stream end).
+            _ = try await group.next()
+            group.cancelAll()
+            do {
+                try await group.waitForAll()
+            } catch is CancellationError {
+                // Expected when the sibling is cancelled after stream end / idle timeout.
+            }
+        }
+    }
+
     private static func consume(
         bytes: URLSession.AsyncBytes,
+        activity: StreamActivityClock,
         clock: any Clock,
         logger: any Logging,
         continuation: AsyncStream<MetricsEvent>.Continuation
@@ -81,6 +141,7 @@ struct DashboardSSEMetricsSource: MetricsSource {
 
         for try await byte in bytes {
             try Task.checkCancellation()
+            await activity.touch()
 
             if byte == 0x0D {
                 let line = decodeLine(lineBuffer)
@@ -174,5 +235,26 @@ struct DashboardSSEMetricsSource: MetricsSource {
         var bytes = bytes
         if bytes.last == 0x0D { bytes.removeLast() }
         return String(decoding: bytes, as: UTF8.self)
+    }
+}
+
+private actor StreamActivityClock {
+    private let clock: any Clock
+    private var lastActivity: Date
+
+    init(clock: any Clock) {
+        self.clock = clock
+        self.lastActivity = clock.now()
+    }
+
+    func touch() {
+        lastActivity = clock.now()
+    }
+
+    func isIdle(longerThan timeout: Duration) -> Bool {
+        let limit =
+            TimeInterval(timeout.components.seconds)
+            + TimeInterval(timeout.components.attoseconds) / 1e18
+        return clock.now().timeIntervalSince(lastActivity) > limit
     }
 }

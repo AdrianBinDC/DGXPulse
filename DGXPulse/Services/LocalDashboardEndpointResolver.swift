@@ -1,35 +1,48 @@
 import Foundation
 
+/// Resolves the local HTTP base URL for the DGX Dashboard.
+///
+/// Discovery order:
+/// 1. Explicit user override
+/// 2. NVIDIA Sync CLI (`nvsync status`) — authoritative local port for remote `11000`
+/// 3. Last working URL (verified still serving the dashboard)
+/// 4. Manual-tunnel default `http://127.0.0.1:11000`
 final class LocalDashboardEndpointResolver: EndpointResolving, @unchecked Sendable {
     private let http: any HTTPClient
     private let preferences: PreferenceStore
     private let logger: any Logging
-    private let probePorts: [Int]
+    private let syncTunnels: any NVIDIASyncTunnelProviding
+    private let manualTunnelPorts: [Int]
 
     init(
         http: any HTTPClient,
         preferences: PreferenceStore = PreferenceStore(),
         logger: any Logging,
-        probePorts: [Int] = DashboardPorts.discoveryCandidates
+        syncTunnels: any NVIDIASyncTunnelProviding,
+        manualTunnelPorts: [Int] = [DashboardPorts.default]
     ) {
         self.http = http
         self.preferences = preferences
         self.logger = logger
-        self.probePorts = probePorts
+        self.syncTunnels = syncTunnels
+        self.manualTunnelPorts = manualTunnelPorts
     }
 
     func resolve() async throws -> URL {
         var candidates: [URL] = []
+
         if let override = preferences.overrideBaseURL {
             candidates.append(override)
         }
+
+        let syncURLs = await syncTunnels.dashboardBaseURLs()
+        candidates.append(contentsOf: syncURLs)
+
         if let lastKnown = preferences.lastKnownBaseURL {
             candidates.append(lastKnown)
         }
-        if let defaultURL = URL(string: "http://127.0.0.1:\(DashboardPorts.default)") {
-            candidates.append(defaultURL)
-        }
-        for port in probePorts {
+
+        for port in manualTunnelPorts {
             if let url = URL(string: "http://127.0.0.1:\(port)") {
                 candidates.append(url)
             }
@@ -43,6 +56,14 @@ final class LocalDashboardEndpointResolver: EndpointResolving, @unchecked Sendab
                 logger.info("Resolved dashboard at \(candidate.absoluteString)", category: .endpoint)
                 preferences.lastKnownBaseURL = candidate
                 return candidate
+            }
+
+            if candidate == preferences.lastKnownBaseURL {
+                logger.info(
+                    "Forgetting stale dashboard endpoint \(candidate.absoluteString)",
+                    category: .endpoint
+                )
+                preferences.lastKnownBaseURL = nil
             }
         }
 

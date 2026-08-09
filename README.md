@@ -17,11 +17,39 @@ Native macOS menu bar monitor for your [NVIDIA DGX Spark](https://www.nvidia.com
 
 Credentials: password is never stored. The session token is kept in Keychain.
 
-## Ports
+## How DGXPulse finds the dashboard
 
-Defaults assume dashboard port `11000` (Sync may bind a different local port). DGXPulse discovers the live localhost dashboard and remembers the last working URL. Override in Preferences only if you need to.
+On the Spark, DGX Dashboard listens on **remote port `11000`**. NVIDIA Sync tunnels that port to your Mac.
 
-Manual tunnel example:
+Sync prefers local `11000` too, but when that port is taken (common after sleep or relaunch) it binds a **different local port**. The browser URL Sync opens (for example `http://localhost:61704`) is that mapped port.
+
+DGXPulse asks Sync for the mapping via the Sync CLI:
+
+```bash
+nvsync status <device-alias>
+```
+
+Example response (trimmed):
+
+```json
+{
+  "status": "RUNNING",
+  "ports": {
+    "11000": { "local_port": 61704, "status": "OPENED" }
+  }
+}
+```
+
+Discovery order:
+
+1. Base URL override from Preferences (if set)
+2. Sync CLI local port for remote `11000`
+3. Last working URL (re-verified)
+4. Manual tunnel default `http://127.0.0.1:11000`
+
+On Mac wake, stream failure, or stale telemetry, DGXPulse forgets the old URL and resolves again.
+
+Manual tunnel example (no Sync):
 
 ```bash
 ssh -L 11000:localhost:11000 <user>@<spark-host>

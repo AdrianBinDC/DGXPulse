@@ -1,3 +1,5 @@
+// swiftlint:disable file_length
+import AppKit
 import Foundation
 import Observation
 
@@ -22,7 +24,10 @@ final class MetricsViewModel {
     private var lastPublishedMenuBarKey: String?
     private var lastMenuBarPublish: Date?
     private var lastHistoryPublish: Date?
+    private var lastSampleReceivedAt: Date?
     private var reconnectAttempt = 0
+    nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var staleWatchTask: Task<Void, Never>?
 
     var isSignedIn: Bool {
         switch phase {
@@ -39,6 +44,15 @@ final class MetricsViewModel {
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
+        installWakeObserver()
+        startStaleWatch()
+    }
+
+    deinit {
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+        staleWatchTask?.cancel()
     }
 
     func onAppear() {
@@ -53,6 +67,8 @@ final class MetricsViewModel {
         }
         if let token = await dependencies.sessionStore.loadToken() {
             statusMessage = "Restoring session…"
+            // Sync often rebinds a new localhost port after relaunch/sleep.
+            dependencies.preferences.lastKnownBaseURL = nil
             await startStreaming(with: token)
         } else {
             phase = .signedOut
@@ -93,6 +109,14 @@ final class MetricsViewModel {
 
     func rediscover() {
         dependencies.preferences.lastKnownBaseURL = nil
+        clearStalePresentation(status: "Looking for DGX Dashboard…")
+        retry()
+    }
+
+    func handleSystemWake() {
+        dependencies.logger.info("System woke; forcing dashboard rediscovery", category: .endpoint)
+        dependencies.preferences.lastKnownBaseURL = nil
+        clearStalePresentation(status: "Mac woke — reconnecting…")
         retry()
     }
 
@@ -168,19 +192,20 @@ final class MetricsViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
             var activeToken = token
-            var knownBase = baseURL
+            // First attempt may reuse the URL from sign-in; later attempts always rediscover.
+            var preferredBase = baseURL
 
             while !Task.isCancelled {
                 do {
                     self.phase = .resolvingEndpoint
                     self.statusMessage = "Looking for DGX Dashboard…"
                     let resolved: URL
-                    if let knownBase {
-                        resolved = knownBase
+                    if let preferred = preferredBase {
+                        resolved = preferred
+                        preferredBase = nil
                     } else {
                         resolved = try await self.dependencies.endpointResolver.resolve()
                     }
-                    knownBase = resolved
                     await self.dependencies.endpointResolver.rememberSuccessfulEndpoint(resolved)
 
                     self.phase = .streaming
@@ -196,7 +221,10 @@ final class MetricsViewModel {
                             self.reconnectAttempt = 0
                             self.phase = .streaming
                             self.statusMessage = "Live"
-                            self.dependencies.logger.info("Telemetry stream connected", category: .telemetry)
+                            self.dependencies.logger.info(
+                                "Telemetry stream connected",
+                                category: .telemetry
+                            )
                         case .sample(let sample):
                             self.reconnectAttempt = 0
                             self.phase = .streaming
@@ -212,7 +240,6 @@ final class MetricsViewModel {
                                 return
                             }
                             if failure == .malformedTelemetry {
-                                // Keep last good sample; continue stream.
                                 self.dependencies.logger.error(
                                     "Ignoring malformed telemetry event",
                                     category: .telemetry
@@ -235,6 +262,11 @@ final class MetricsViewModel {
 
                     self.phase = .reconnecting(failure)
                     self.statusMessage = failure.userMessage
+                    self.latestSample = nil
+                    self.lastSampleReceivedAt = nil
+                    self.menuBarTitle = "DGXPulse"
+                    self.dependencies.preferences.lastKnownBaseURL = nil
+                    preferredBase = nil
                     let delay = ReconnectBackoff.delay(forAttempt: self.reconnectAttempt)
                     self.reconnectAttempt += 1
                     self.dependencies.logger.error(
@@ -250,7 +282,6 @@ final class MetricsViewModel {
                     if let refreshed = await self.dependencies.sessionStore.loadToken() {
                         activeToken = refreshed
                     }
-                    knownBase = nil
                 } catch {
                     self.phase = .failed(.server(error.localizedDescription))
                     self.statusMessage = error.localizedDescription
@@ -262,6 +293,7 @@ final class MetricsViewModel {
 
     private func accept(_ sample: MetricsSample) async {
         latestSample = sample
+        lastSampleReceivedAt = dependencies.clock.now()
         publishMenuBarIfNeeded(sample)
 
         do {
@@ -273,7 +305,10 @@ final class MetricsViewModel {
                 await refreshHistory(force: false)
             }
         } catch {
-            dependencies.logger.error("History write failed: \(error.localizedDescription)", category: .history)
+            dependencies.logger.error(
+                "History write failed: \(error.localizedDescription)",
+                category: .history
+            )
         }
     }
 
@@ -293,7 +328,10 @@ final class MetricsViewModel {
                 now: now
             )
         } catch {
-            dependencies.logger.error("History read failed: \(error.localizedDescription)", category: .history)
+            dependencies.logger.error(
+                "History read failed: \(error.localizedDescription)",
+                category: .history
+            )
         }
     }
 
@@ -310,7 +348,6 @@ final class MetricsViewModel {
         if let lastMenuBarPublish, now.timeIntervalSince(lastMenuBarPublish) < 1,
             lastPublishedMenuBarKey != nil
         {
-            // Throttle to ~1 Hz even when values change.
             return
         }
         lastPublishedMenuBarKey = key
@@ -330,5 +367,53 @@ final class MetricsViewModel {
         statusMessage = failure.userMessage
         menuBarTitle = "DGXPulse"
         dependencies.logger.error(failure.userMessage, category: .app)
+    }
+
+    private func installWakeObserver() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemWake()
+            }
+        }
+    }
+
+    private func startStaleWatch() {
+        staleWatchTask?.cancel()
+        staleWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await self?.markStaleIfNeeded()
+            }
+        }
+    }
+
+    private func markStaleIfNeeded() {
+        guard phase == .streaming else { return }
+        guard let receivedAt = lastSampleReceivedAt else { return }
+        let age = dependencies.clock.now().timeIntervalSince(receivedAt)
+        guard age > DashboardPorts.sampleStaleInterval else { return }
+
+        statusMessage = "No live telemetry — reconnecting…"
+        menuBarTitle = "DGXPulse"
+        latestSample = nil
+        lastSampleReceivedAt = nil
+        dependencies.preferences.lastKnownBaseURL = nil
+        dependencies.logger.error(
+            "Telemetry went stale after \(Int(age))s; rediscovering",
+            category: .telemetry
+        )
+        retry()
+    }
+
+    private func clearStalePresentation(status: String) {
+        latestSample = nil
+        lastSampleReceivedAt = nil
+        lastPublishedMenuBarKey = nil
+        menuBarTitle = "DGXPulse"
+        statusMessage = status
     }
 }

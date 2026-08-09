@@ -1,0 +1,13 @@
+{
+  "status": "RUNNING",
+  "error": "",
+  "dialer": "direct-connect",
+  "dashboard_installed": true,
+  "tailscale": {
+    "error": null,
+    "enrolled": false,
+    "name": "",
+    "auth_expiry": null
+  },
+  "ports": {}
+}

@@ -10,6 +10,11 @@ protocol EndpointResolving: Sendable {
     func rememberSuccessfulEndpoint(_ url: URL) async
 }
 
+/// Discovers the local DGX Dashboard URL that NVIDIA Sync is currently tunneling.
+protocol NVIDIASyncTunnelProviding: Sendable {
+    func dashboardBaseURLs() async -> [URL]
+}
+
 protocol AuthSessionStoring: Sendable {
     func loadUsername() async -> String?
     func loadToken() async -> String?

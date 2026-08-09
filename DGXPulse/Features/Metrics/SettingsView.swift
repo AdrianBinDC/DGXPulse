@@ -38,9 +38,12 @@ struct SettingsView: View {
             Section("Endpoint") {
                 TextField("Base URL override", text: $viewModel.overrideBaseURLString)
                     .textFieldStyle(.roundedBorder)
-                Text("Leave blank to auto-discover. Default port is \(DashboardPorts.default).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Leave blank to use NVIDIA Sync (`nvsync status`) or a manual tunnel "
+                        + "on port \(DashboardPorts.default)."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Button("Save Override") { viewModel.saveOverrideURL() }
                 Button("Reset Defaults") { viewModel.resetDefaults() }
                 Button("Rediscover") { viewModel.rediscover() }
