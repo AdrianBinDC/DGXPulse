@@ -1,0 +1,6 @@
+event: gpu_telemetry
+data: {"TelemetryForGPUs":[{"percentage_utilization":0.0,"memory_total_in_mb":128000.0,"memory_available_in_mb":24230.0}]}
+
+event: gpu_telemetry
+data: {"TelemetryForGPUs":[{"percentage_utilization":37.0,"memory_total_in_mb":128000.0,"memory_available_in_mb":90000.0}]}
+
