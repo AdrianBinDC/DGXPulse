@@ -50,11 +50,9 @@ struct AppDependencies {
 
     static func mock(
         modelContainer: ModelContainer? = nil,
-        metricsSource: any MetricsSource = StaticMetricsSource(events: []),
-        sessionStore: any AuthSessionStoring = InMemorySessionStore(),
-        endpointResolver: any EndpointResolving = StaticEndpointResolver(
-            url: URL(string: "http://127.0.0.1:11000") ?? URL(fileURLWithPath: "/")
-        ),
+        metricsSource: (any MetricsSource)? = nil,
+        sessionStore: (any AuthSessionStoring)? = nil,
+        endpointResolver: (any EndpointResolving)? = nil,
         historyStore: (any MetricsHistoryStoring)? = nil
     ) -> AppDependencies {
         let container: ModelContainer
@@ -75,12 +73,17 @@ struct AppDependencies {
         let http = URLSessionHTTPClient()
         let defaults = UserDefaults(suiteName: "DGXPulseTests") ?? .standard
         let preferences = PreferenceStore(defaults: defaults)
+        let resolvedEndpoint =
+            endpointResolver
+            ?? StaticEndpointResolver(
+                url: URL(string: "http://127.0.0.1:11000") ?? URL(fileURLWithPath: "/")
+            )
 
         return AppDependencies(
             httpClient: http,
-            endpointResolver: endpointResolver,
-            sessionStore: sessionStore,
-            metricsSource: metricsSource,
+            endpointResolver: resolvedEndpoint,
+            sessionStore: sessionStore ?? InMemorySessionStore(),
+            metricsSource: metricsSource ?? StaticMetricsSource(events: []),
             historyStore: historyStore ?? InMemoryMetricsHistoryStore(),
             authClient: DashboardAuthClient(http: http, logger: logger),
             logger: logger,
