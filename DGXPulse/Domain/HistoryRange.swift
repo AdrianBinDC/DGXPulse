@@ -73,7 +73,7 @@ enum HistoryDownsampler {
 private struct BucketAccumulator {
     let index: Int
     let bucketDuration: TimeInterval
-    private var count = 0
+    private var sampleCount = 0
     private var gpu = 0.0
     private var used = 0.0
     private var total = 0.0
@@ -84,20 +84,20 @@ private struct BucketAccumulator {
     }
 
     mutating func add(_ sample: MetricsSample) {
-        count += 1
+        sampleCount += 1
         gpu += sample.gpuUtilizationPercent
         used += sample.memoryUsedMB
         total += sample.memoryTotalMB
     }
 
     var averagedSample: MetricsSample? {
-        guard count > 0 else { return nil }
+        guard sampleCount > 0 else { return nil }
         let midpoint = (Double(index) + 0.5) * bucketDuration
         return MetricsSample(
             timestamp: Date(timeIntervalSince1970: midpoint),
-            gpuUtilizationPercent: gpu / Double(count),
-            memoryUsedMB: used / Double(count),
-            memoryTotalMB: total / Double(count)
+            gpuUtilizationPercent: gpu / Double(sampleCount),
+            memoryUsedMB: used / Double(sampleCount),
+            memoryTotalMB: total / Double(sampleCount)
         )
     }
 }
