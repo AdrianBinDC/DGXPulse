@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -5,12 +6,33 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Dashboard") {
+            Section("Sign In") {
+                Text("Use the same username and password as the DGX Dashboard web UI.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 TextField("Username", text: $viewModel.username)
+                    .textFieldStyle(.roundedBorder)
+
                 SecureField("Password", text: $viewModel.password)
-                Button("Sign In") { viewModel.signIn() }
+                    .textFieldStyle(.roundedBorder)
+
+                HStack {
+                    Button("Sign In") {
+                        viewModel.signIn()
+                    }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!viewModel.canSignIn)
-                Button("Sign Out", role: .destructive) { viewModel.signOut() }
+                    .keyboardShortcut(.defaultAction)
+
+                    Button("Sign Out", role: .destructive) {
+                        viewModel.signOut()
+                    }
+                }
+
+                Text(viewModel.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Endpoint") {
@@ -23,13 +45,13 @@ struct SettingsView: View {
                 Button("Reset Defaults") { viewModel.resetDefaults() }
                 Button("Rediscover") { viewModel.rediscover() }
             }
-
-            Section("Status") {
-                Text(viewModel.statusMessage)
-            }
         }
+        .formStyle(.grouped)
         .padding()
-        .frame(width: 420, height: 360)
+        .frame(minWidth: 420, minHeight: 380)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -55,6 +77,9 @@ struct DiagnosticsView: View {
         }
         .padding()
         .frame(width: 560, height: 360)
-        .onAppear { viewModel.refreshDiagnostics() }
+        .onAppear {
+            viewModel.refreshDiagnostics()
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }

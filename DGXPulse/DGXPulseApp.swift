@@ -25,14 +25,11 @@ struct DGXPulseApp: App {
     var body: some Scene {
         MenuBarExtra {
             MetricsMenuView(viewModel: viewModel)
-                .task {
-                    await viewModel.bootstrap()
-                }
         } label: {
             Text(viewModel.menuBarTitle)
                 .monospacedDigit()
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
 
         Window("DGXPulse", id: "dashboard") {
             DetailDashboardView(viewModel: viewModel)
@@ -40,10 +37,10 @@ struct DGXPulseApp: App {
         .defaultSize(width: 860, height: 640)
         .modelContainer(modelContainer)
 
-        Window("Preferences", id: "settings") {
+        Window("Sign In", id: "settings") {
             SettingsView(viewModel: viewModel)
         }
-        .defaultSize(width: 440, height: 380)
+        .defaultSize(width: 440, height: 420)
 
         Window("Diagnostics", id: "diagnostics") {
             DiagnosticsView(viewModel: viewModel)

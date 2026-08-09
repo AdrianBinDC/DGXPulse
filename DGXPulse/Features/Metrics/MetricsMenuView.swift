@@ -6,44 +6,27 @@ struct MetricsMenuView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let sample = viewModel.latestSample {
-                let ram = Int(sample.memoryUtilizationPercent.rounded())
-                let used = String(format: "%.1f", sample.memoryUsedGB)
-                let total = String(format: "%.0f", sample.memoryTotalGB)
-                Text("RAM \(ram)% · \(used) / \(total) GB")
-                Text("GPU \(Int(sample.gpuUtilizationPercent.rounded()))%")
-            }
-
-            Text(viewModel.statusMessage)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            header
 
             Divider()
 
-            if viewModel.phase == .signedOut || isAuthFailure {
-                signInFields
-                Button("Sign In") { viewModel.signIn() }
-                    .disabled(!viewModel.canSignIn)
-                    .keyboardShortcut(.defaultAction)
+            if needsSignIn {
+                signInForm
             } else {
-                Button("Open Dashboard") {
-                    viewModel.openDetail()
-                    openWindow(id: "dashboard")
-                }
-                Button("Retry / Rediscover") { viewModel.rediscover() }
-                Button("Sign Out") { viewModel.signOut() }
+                connectedActions
             }
 
             Divider()
 
             Button("Preferences…") {
-                openWindow(id: "settings")
+                presentWindow(id: "settings")
             }
             .keyboardShortcut(",")
 
             Button("Diagnostics") {
                 viewModel.refreshDiagnostics()
-                openWindow(id: "diagnostics")
+                presentWindow(id: "diagnostics")
             }
 
             Button("Quit DGXPulse") {
@@ -51,18 +34,91 @@ struct MetricsMenuView: View {
             }
             .keyboardShortcut("q")
         }
-        .padding(4)
+        .padding(14)
+        .frame(width: 280)
+        .task {
+            await viewModel.bootstrap()
+            if needsSignIn {
+                presentWindow(id: "settings")
+            }
+        }
     }
 
-    private var isAuthFailure: Bool {
-        if case .failed(.unauthorized) = viewModel.phase { return true }
-        if case .failed(.loginFailed) = viewModel.phase { return true }
-        return false
+    private var needsSignIn: Bool {
+        switch viewModel.phase {
+        case .signedOut:
+            return true
+        case .failed(.unauthorized), .failed(.loginFailed):
+            return true
+        default:
+            return false
+        }
     }
 
-    @ViewBuilder
-    private var signInFields: some View {
-        TextField("Username", text: $viewModel.username)
-        SecureField("Password", text: $viewModel.password)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("DGXPulse")
+                .font(.headline)
+            Text(viewModel.statusMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let sample = viewModel.latestSample {
+                let ram = Int(sample.memoryUtilizationPercent.rounded())
+                let used = String(format: "%.1f", sample.memoryUsedGB)
+                let total = String(format: "%.0f", sample.memoryTotalGB)
+                Text("RAM \(ram)% · \(used) / \(total) GB")
+                    .font(.caption.monospacedDigit())
+                Text("GPU \(Int(sample.gpuUtilizationPercent.rounded()))%")
+                    .font(.caption.monospacedDigit())
+            }
+        }
+    }
+
+    private var signInForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sign in with your DGX Dashboard credentials.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField("Username", text: $viewModel.username)
+                .textFieldStyle(.roundedBorder)
+
+            SecureField("Password", text: $viewModel.password)
+                .textFieldStyle(.roundedBorder)
+
+            Button("Sign In") {
+                viewModel.signIn()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canSignIn)
+            .keyboardShortcut(.defaultAction)
+
+            Button("Open Sign-In Window…") {
+                presentWindow(id: "settings")
+            }
+            .buttonStyle(.link)
+        }
+    }
+
+    private var connectedActions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button("Open Dashboard") {
+                viewModel.openDetail()
+                presentWindow(id: "dashboard")
+            }
+            Button("Retry / Rediscover") {
+                viewModel.rediscover()
+            }
+            Button("Sign Out", role: .destructive) {
+                viewModel.signOut()
+            }
+        }
+    }
+
+    private func presentWindow(id: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: id)
     }
 }
