@@ -52,6 +52,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .frame(minWidth: 420, minHeight: 380)
+        .navigateAfterSignIn(using: viewModel)
         .onAppear {
             NSApp.activate(ignoringOtherApps: true)
         }

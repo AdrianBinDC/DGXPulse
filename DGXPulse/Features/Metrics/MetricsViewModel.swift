@@ -13,6 +13,8 @@ final class MetricsViewModel {
     private(set) var diagnostics: [String] = []
     private(set) var menuBarTitle: String = "DGXPulse"
     private(set) var isDetailPresented = false
+    /// One-shot signal after interactive sign-in so the UI can swap windows.
+    private(set) var postSignInNavigationPending = false
 
     var username: String = ""
     var password: String = ""
@@ -80,6 +82,10 @@ final class MetricsViewModel {
         Task { await performSignIn() }
     }
 
+    func acknowledgePostSignInNavigation() {
+        postSignInNavigationPending = false
+    }
+
     func signOut() {
         streamTask?.cancel()
         streamTask = nil
@@ -114,10 +120,19 @@ final class MetricsViewModel {
     }
 
     func handleSystemWake() {
-        dependencies.logger.info("System woke; forcing dashboard rediscovery", category: .endpoint)
+        dependencies.logger.info("System woke; waiting for NVIDIA Sync before rediscovery", category: .endpoint)
         dependencies.preferences.lastKnownBaseURL = nil
-        clearStalePresentation(status: "Mac woke — reconnecting…")
-        retry()
+        clearStalePresentation(status: "Mac woke — waiting for NVIDIA Sync…")
+        streamTask?.cancel()
+        streamTask = nil
+        Task {
+            do {
+                try await dependencies.sleeper.sleep(for: DashboardPorts.postWakeSettleDelay)
+            } catch {
+                return
+            }
+            retry()
+        }
     }
 
     func saveOverrideURL() {
@@ -177,6 +192,7 @@ final class MetricsViewModel {
             password = ""
             username = trimmed
             await dependencies.endpointResolver.rememberSuccessfulEndpoint(baseURL)
+            postSignInNavigationPending = true
             await startStreaming(with: token, baseURL: baseURL)
         } catch let failure as ConnectionFailure {
             await handleFailure(failure)

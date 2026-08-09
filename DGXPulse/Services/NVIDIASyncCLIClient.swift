@@ -50,36 +50,49 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
     }
 
     private func dashboardURL(for alias: String, executableURL: URL) async -> URL? {
-        var status = await fetchStatus(alias: alias, executableURL: executableURL)
+        for attempt in 0..<DashboardPorts.syncTunnelPollAttempts {
+            var status = await fetchStatus(alias: alias, executableURL: executableURL)
 
-        if status?.isRunning == true, status?.dashboardLocalPort == nil {
-            let remote = NVIDIASyncKnownPorts.remoteDashboard
+            if status?.isRunning == true, status?.dashboardLocalPort == nil {
+                let remote = NVIDIASyncKnownPorts.remoteDashboard
+                logger.info(
+                    "Sync alias \(alias) connected without dashboard tunnel; opening remote \(remote)",
+                    category: .endpoint
+                )
+                _ = await runCommand(
+                    executableURL,
+                    ["open", alias, String(NVIDIASyncKnownPorts.remoteDashboard)]
+                )
+                status = await fetchStatus(alias: alias, executableURL: executableURL)
+            }
+
+            if let status, status.isRunning, let localPort = status.dashboardLocalPort {
+                let remote = NVIDIASyncKnownPorts.remoteDashboard
+                logger.info(
+                    "Sync alias \(alias): remote \(remote) → local \(localPort)",
+                    category: .endpoint
+                )
+                return URL(string: "http://127.0.0.1:\(localPort)")
+            }
+
+            let connection = status?.connectionStatus ?? "unavailable"
+            let isLastAttempt = attempt == DashboardPorts.syncTunnelPollAttempts - 1
+            if isLastAttempt {
+                logger.info(
+                    "Sync alias \(alias) has no open dashboard tunnel (status=\(connection))",
+                    category: .endpoint
+                )
+                return nil
+            }
+
             logger.info(
-                "Sync alias \(alias) connected without dashboard tunnel; opening remote \(remote)",
+                "Sync alias \(alias) not ready (status=\(connection)); retrying…",
                 category: .endpoint
             )
-            _ = await runCommand(
-                executableURL,
-                ["open", alias, String(NVIDIASyncKnownPorts.remoteDashboard)]
-            )
-            status = await fetchStatus(alias: alias, executableURL: executableURL)
+            try? await Task.sleep(for: DashboardPorts.syncTunnelPollInterval)
         }
 
-        guard let status else { return nil }
-        guard status.isRunning, let localPort = status.dashboardLocalPort else {
-            logger.info(
-                "Sync alias \(alias) has no open dashboard tunnel (status=\(status.connectionStatus))",
-                category: .endpoint
-            )
-            return nil
-        }
-
-        let remote = NVIDIASyncKnownPorts.remoteDashboard
-        logger.info(
-            "Sync alias \(alias): remote \(remote) → local \(localPort)",
-            category: .endpoint
-        )
-        return URL(string: "http://127.0.0.1:\(localPort)")
+        return nil
     }
 
     private func fetchStatus(alias: String, executableURL: URL) async -> NVIDIASyncStatus? {

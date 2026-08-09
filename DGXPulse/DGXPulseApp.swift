@@ -31,18 +31,18 @@ struct DGXPulseApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("DGXPulse", id: "dashboard") {
+        Window("DGXPulse", id: AppWindowID.dashboard) {
             DetailDashboardView(viewModel: viewModel)
         }
         .defaultSize(width: 860, height: 640)
         .modelContainer(modelContainer)
 
-        Window("Sign In", id: "settings") {
+        Window("Sign In", id: AppWindowID.settings) {
             SettingsView(viewModel: viewModel)
         }
         .defaultSize(width: 440, height: 420)
 
-        Window("Diagnostics", id: "diagnostics") {
+        Window("Diagnostics", id: AppWindowID.diagnostics) {
             DiagnosticsView(viewModel: viewModel)
         }
         .defaultSize(width: 580, height: 380)

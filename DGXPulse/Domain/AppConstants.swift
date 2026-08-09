@@ -8,6 +8,11 @@ enum DashboardPorts {
     static let telemetryIdleTimeout: Duration = .seconds(30)
     /// Treat menu-bar samples older than this as stale after sleep/disconnect.
     static let sampleStaleInterval: TimeInterval = 45
+    /// Give NVIDIA Sync time to rebind tunnels after Mac wake before rediscovering.
+    static let postWakeSettleDelay: Duration = .seconds(4)
+    /// How long Sync tunnel discovery will poll while the device is reconnecting.
+    static let syncTunnelPollAttempts = 5
+    static let syncTunnelPollInterval: Duration = .seconds(2)
 }
 
 enum AppPreferenceKey {
@@ -16,4 +21,10 @@ enum AppPreferenceKey {
     static let username = "DGXPulse.DashboardUsername"
     static let historyRetentionHours = "DGXPulse.HistoryRetentionHours"
     static let historyRange = "DGXPulse.HistoryRange"
+}
+
+enum AppWindowID {
+    static let dashboard = "dashboard"
+    static let settings = "settings"
+    static let diagnostics = "diagnostics"
 }

@@ -20,13 +20,13 @@ struct MetricsMenuView: View {
             Divider()
 
             Button("Preferences…") {
-                presentWindow(id: "settings")
+                presentWindow(id: AppWindowID.settings)
             }
             .keyboardShortcut(",")
 
             Button("Diagnostics") {
                 viewModel.refreshDiagnostics()
-                presentWindow(id: "diagnostics")
+                presentWindow(id: AppWindowID.diagnostics)
             }
 
             Button("Quit DGXPulse") {
@@ -36,10 +36,11 @@ struct MetricsMenuView: View {
         }
         .padding(14)
         .frame(width: 280)
+        .navigateAfterSignIn(using: viewModel)
         .task {
             await viewModel.bootstrap()
             if needsSignIn {
-                presentWindow(id: "settings")
+                presentWindow(id: AppWindowID.settings)
             }
         }
     }
@@ -96,7 +97,7 @@ struct MetricsMenuView: View {
             .keyboardShortcut(.defaultAction)
 
             Button("Open Sign-In Window…") {
-                presentWindow(id: "settings")
+                presentWindow(id: AppWindowID.settings)
             }
             .buttonStyle(.link)
         }
@@ -106,7 +107,7 @@ struct MetricsMenuView: View {
         VStack(alignment: .leading, spacing: 6) {
             Button("Open Dashboard") {
                 viewModel.openDetail()
-                presentWindow(id: "dashboard")
+                presentWindow(id: AppWindowID.dashboard)
             }
             Button("Retry / Rediscover") {
                 viewModel.rediscover()

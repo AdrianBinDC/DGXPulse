@@ -34,12 +34,12 @@ struct DetailDashboardView: View {
                 MetricPanel(
                     title: "System Memory",
                     gaugeValue: viewModel.latestSample?.memoryUsedGB ?? 0,
-                    gaugeMax: max(viewModel.latestSample?.memoryTotalGB ?? 128, 1),
+                    gaugeMax: max(memoryTotalGB, 1),
                     primaryText: memoryPrimary,
                     secondaryText: memorySecondary,
                     samples: viewModel.history,
                     chartValue: \.memoryUsedGB,
-                    yLabel: String(format: "%.0fGB", viewModel.latestSample?.memoryTotalGB ?? 128)
+                    yLabel: memoryChartYLabel
                 )
 
                 MetricPanel(
@@ -63,6 +63,14 @@ struct DetailDashboardView: View {
         }
     }
 
+    private var memoryTotalGB: Double {
+        viewModel.latestSample?.memoryTotalGB ?? 128
+    }
+
+    private var memoryChartYLabel: String {
+        "\(Int(memoryTotalGB.rounded()))GB"
+    }
+
     private var statusBanner: some View {
         Text(viewModel.statusMessage)
             .font(.callout)
@@ -76,11 +84,11 @@ struct DetailDashboardView: View {
 
     private var memorySecondary: String {
         guard let sample = viewModel.latestSample else { return "— GB total" }
-        return String(format: "%.0f GB total", sample.memoryTotalGB)
+        return "\(Int(sample.memoryTotalGB.rounded())) GB total"
     }
 
     private var gpuPrimary: String {
         guard let sample = viewModel.latestSample else { return "— %" }
-        return String(format: "%.0f %%", sample.gpuUtilizationPercent)
+        return "\(Int(sample.gpuUtilizationPercent.rounded())) %"
     }
 }
