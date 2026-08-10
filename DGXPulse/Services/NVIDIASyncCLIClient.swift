@@ -220,15 +220,15 @@ struct CommandResult: Sendable {
     var stderr: Data
 }
 
-enum ProcessRunner {
-    static func run(_ executable: URL, _ arguments: [String]) async -> CommandResult {
+nonisolated enum ProcessRunner {
+    nonisolated static func run(_ executable: URL, _ arguments: [String]) async -> CommandResult {
         await Task.detached(priority: .utility) {
             runSync(executable, arguments: arguments)
         }
         .value
     }
 
-    static func runSync(_ executable: URL, arguments: [String]) -> CommandResult {
+    nonisolated static func runSync(_ executable: URL, arguments: [String]) -> CommandResult {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments

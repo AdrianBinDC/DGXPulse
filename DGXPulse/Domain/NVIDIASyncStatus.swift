@@ -1,7 +1,7 @@
 import Foundation
 
 /// Remote DGX Dashboard listen port on the Spark (documented NVIDIA default).
-enum NVIDIASyncKnownPorts {
+nonisolated enum NVIDIASyncKnownPorts {
     static let remoteDashboard = 11_000
 }
 

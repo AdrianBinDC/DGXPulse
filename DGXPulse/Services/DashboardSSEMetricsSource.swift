@@ -1,6 +1,6 @@
 import Foundation
 
-struct DashboardSSEMetricsSource: MetricsSource {
+nonisolated struct DashboardSSEMetricsSource: MetricsSource {
     private let http: any HTTPClient
     private let logger: any Logging
     private let clock: any Clock
@@ -18,7 +18,7 @@ struct DashboardSSEMetricsSource: MetricsSource {
         self.idleTimeout = idleTimeout
     }
 
-    func events(token: String, baseURL: URL) -> AsyncStream<MetricsEvent> {
+    nonisolated func events(token: String, baseURL: URL) -> AsyncStream<MetricsEvent> {
         AsyncStream { continuation in
             let task = Task {
                 do {

@@ -1,6 +1,6 @@
 import Foundation
 
-enum DashboardPorts {
+nonisolated enum DashboardPorts {
     /// Documented remote / manual-tunnel dashboard port on the Spark.
     static let `default` = NVIDIASyncKnownPorts.remoteDashboard
     static let jupyterDefault = 11_002
@@ -15,7 +15,7 @@ enum DashboardPorts {
     static let syncTunnelPollInterval: Duration = .seconds(2)
 }
 
-enum AppPreferenceKey {
+nonisolated enum AppPreferenceKey {
     static let dashboardBaseURL = "DGXPulse.DashboardBaseURL"
     static let lastKnownBaseURL = "DGXPulse.LastKnownBaseURL"
     static let username = "DGXPulse.DashboardUsername"
@@ -23,7 +23,7 @@ enum AppPreferenceKey {
     static let historyRange = "DGXPulse.HistoryRange"
 }
 
-enum AppWindowID {
+nonisolated enum AppWindowID {
     static let dashboard = "dashboard"
     static let settings = "settings"
     static let diagnostics = "diagnostics"

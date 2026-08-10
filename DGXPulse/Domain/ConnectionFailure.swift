@@ -1,6 +1,6 @@
 import Foundation
 
-enum ConnectionFailure: Error, Equatable, Sendable {
+nonisolated enum ConnectionFailure: Error, Equatable, Sendable {
     case tunnelUnavailable
     case unauthorized
     case unreachable(String)

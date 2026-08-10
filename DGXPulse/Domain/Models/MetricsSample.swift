@@ -1,6 +1,6 @@
 import Foundation
 
-struct MetricsSample: Equatable, Sendable {
+nonisolated struct MetricsSample: Equatable, Sendable {
     var timestamp: Date
     var gpuUtilizationPercent: Double
     var memoryUsedMB: Double
@@ -18,7 +18,7 @@ struct MetricsSample: Equatable, Sendable {
     }
 }
 
-struct DashboardTelemetryPayload: Decodable, Sendable {
+nonisolated struct DashboardTelemetryPayload: Decodable, Sendable {
     let telemetryForGPUs: [DashboardGPUTelemetry]
 
     enum CodingKeys: String, CodingKey {
@@ -26,7 +26,7 @@ struct DashboardTelemetryPayload: Decodable, Sendable {
     }
 }
 
-struct DashboardGPUTelemetry: Decodable, Sendable {
+nonisolated struct DashboardGPUTelemetry: Decodable, Sendable {
     let percentageUtilization: Double
     let memoryTotalInMB: Double
     let memoryAvailableInMB: Double
@@ -47,7 +47,7 @@ struct DashboardGPUTelemetry: Decodable, Sendable {
     }
 }
 
-enum TelemetryParser {
+nonisolated enum TelemetryParser {
     static func parseSample(from data: Data, at date: Date = .now) throws -> MetricsSample {
         let payload = try JSONDecoder().decode(DashboardTelemetryPayload.self, from: data)
         guard let gpu = payload.telemetryForGPUs.first else {
@@ -57,10 +57,10 @@ enum TelemetryParser {
     }
 }
 
-struct LoginResponse: Decodable, Sendable {
+nonisolated struct LoginResponse: Decodable, Sendable {
     let token: String
 }
 
-struct DashboardErrorResponse: Decodable, Sendable {
+nonisolated struct DashboardErrorResponse: Decodable, Sendable {
     let error: String
 }

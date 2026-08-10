@@ -22,7 +22,7 @@ protocol AuthSessionStoring: Sendable {
     func clear() async
 }
 
-enum MetricsEvent: Sendable {
+nonisolated enum MetricsEvent: Sendable {
     case connected
     case sample(MetricsSample)
     case failure(ConnectionFailure)
@@ -39,9 +39,9 @@ protocol MetricsHistoryStoring: Sendable {
 }
 
 protocol Logging: Sendable {
-    func debug(_ message: String, category: LogCategory)
-    func info(_ message: String, category: LogCategory)
-    func error(_ message: String, category: LogCategory)
+    nonisolated func debug(_ message: String, category: LogCategory)
+    nonisolated func info(_ message: String, category: LogCategory)
+    nonisolated func error(_ message: String, category: LogCategory)
 }
 
 enum LogCategory: String, Sendable {
@@ -54,7 +54,7 @@ enum LogCategory: String, Sendable {
 }
 
 protocol Clock: Sendable {
-    func now() -> Date
+    nonisolated func now() -> Date
 }
 
 protocol Sleeping: Sendable {

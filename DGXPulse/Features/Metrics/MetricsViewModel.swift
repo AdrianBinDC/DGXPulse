@@ -28,8 +28,7 @@ final class MetricsViewModel {
     private var lastHistoryPublish: Date?
     private var lastSampleReceivedAt: Date?
     private var reconnectAttempt = 0
-    nonisolated(unsafe) private var wakeObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var staleWatchTask: Task<Void, Never>?
+    @ObservationIgnored private let lifecycle = MetricsViewModelLifecycle()
 
     var isSignedIn: Bool {
         switch phase {
@@ -48,13 +47,6 @@ final class MetricsViewModel {
         self.dependencies = dependencies
         installWakeObserver()
         startStaleWatch()
-    }
-
-    deinit {
-        if let wakeObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
-        }
-        staleWatchTask?.cancel()
     }
 
     func onAppear() {
@@ -386,23 +378,23 @@ final class MetricsViewModel {
     }
 
     private func installWakeObserver() {
-        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        lifecycle.wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.handleSystemWake()
             }
         }
     }
 
     private func startStaleWatch() {
-        staleWatchTask?.cancel()
-        staleWatchTask = Task { [weak self] in
+        lifecycle.staleWatchTask?.cancel()
+        lifecycle.staleWatchTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
-                await self?.markStaleIfNeeded()
+                self?.markStaleIfNeeded()
             }
         }
     }
@@ -431,5 +423,18 @@ final class MetricsViewModel {
         lastPublishedMenuBarKey = nil
         menuBarTitle = "DGXPulse"
         statusMessage = status
+    }
+}
+
+/// Holds observer/task handles outside `@Observable` storage so deinit can clean them up safely.
+private final class MetricsViewModelLifecycle: @unchecked Sendable {
+    var wakeObserver: NSObjectProtocol?
+    var staleWatchTask: Task<Void, Never>?
+
+    deinit {
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+        staleWatchTask?.cancel()
     }
 }
