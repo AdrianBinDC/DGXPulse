@@ -21,8 +21,13 @@ nonisolated struct MetricsSample: Equatable, Sendable {
 nonisolated struct DashboardTelemetryPayload: Decodable, Sendable {
     let telemetryForGPUs: [DashboardGPUTelemetry]
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case telemetryForGPUs = "TelemetryForGPUs"
+    }
+
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        telemetryForGPUs = try container.decode([DashboardGPUTelemetry].self, forKey: .telemetryForGPUs)
     }
 }
 
@@ -31,13 +36,20 @@ nonisolated struct DashboardGPUTelemetry: Decodable, Sendable {
     let memoryTotalInMB: Double
     let memoryAvailableInMB: Double
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case percentageUtilization = "percentage_utilization"
         case memoryTotalInMB = "memory_total_in_mb"
         case memoryAvailableInMB = "memory_available_in_mb"
     }
 
-    func asMetricsSample(at date: Date) -> MetricsSample {
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        percentageUtilization = try container.decode(Double.self, forKey: .percentageUtilization)
+        memoryTotalInMB = try container.decode(Double.self, forKey: .memoryTotalInMB)
+        memoryAvailableInMB = try container.decode(Double.self, forKey: .memoryAvailableInMB)
+    }
+
+    nonisolated func asMetricsSample(at date: Date) -> MetricsSample {
         MetricsSample(
             timestamp: date,
             gpuUtilizationPercent: percentageUtilization,
@@ -48,7 +60,7 @@ nonisolated struct DashboardGPUTelemetry: Decodable, Sendable {
 }
 
 nonisolated enum TelemetryParser {
-    static func parseSample(from data: Data, at date: Date = .now) throws -> MetricsSample {
+    nonisolated static func parseSample(from data: Data, at date: Date) throws -> MetricsSample {
         let payload = try JSONDecoder().decode(DashboardTelemetryPayload.self, from: data)
         guard let gpu = payload.telemetryForGPUs.first else {
             throw ConnectionFailure.malformedTelemetry
@@ -59,8 +71,26 @@ nonisolated enum TelemetryParser {
 
 nonisolated struct LoginResponse: Decodable, Sendable {
     let token: String
+
+    nonisolated enum CodingKeys: String, CodingKey {
+        case token
+    }
+
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        token = try container.decode(String.self, forKey: .token)
+    }
 }
 
 nonisolated struct DashboardErrorResponse: Decodable, Sendable {
     let error: String
+
+    nonisolated enum CodingKeys: String, CodingKey {
+        case error
+    }
+
+    nonisolated init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        error = try container.decode(String.self, forKey: .error)
+    }
 }
