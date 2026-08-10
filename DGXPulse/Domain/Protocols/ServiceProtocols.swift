@@ -1,0 +1,69 @@
+import Foundation
+
+protocol HTTPClient: Sendable {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse)
+    func bytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse)
+}
+
+protocol EndpointResolving: Sendable {
+    func resolve() async throws -> URL
+    func rememberSuccessfulEndpoint(_ url: URL) async
+}
+
+/// Discovers the local DGX Dashboard URL that NVIDIA Sync is currently tunneling.
+protocol NVIDIASyncTunnelProviding: Sendable {
+    func discover() async -> NVIDIASyncTunnelDiscovery
+}
+
+nonisolated struct NVIDIASyncTunnelDiscovery: Sendable, Equatable {
+    /// True when Sync device aliases exist on this Mac.
+    var hasConfiguredAliases: Bool
+    /// Live local dashboard base URLs (usually one).
+    var urls: [URL]
+}
+
+protocol AuthSessionStoring: Sendable {
+    func loadUsername() async -> String?
+    func loadToken() async -> String?
+    func save(username: String, token: String) async throws
+    func clear() async
+}
+
+nonisolated enum MetricsEvent: Sendable {
+    case connected
+    case sample(MetricsSample)
+    case failure(ConnectionFailure)
+}
+
+protocol MetricsSource: Sendable {
+    func events(token: String, baseURL: URL) -> AsyncStream<MetricsEvent>
+}
+
+protocol MetricsHistoryStoring: Sendable {
+    func append(_ sample: MetricsSample) async throws
+    func recent(since date: Date) async throws -> [MetricsSample]
+    func prune(olderThan date: Date) async throws
+}
+
+protocol Logging: Sendable {
+    nonisolated func debug(_ message: String, category: LogCategory)
+    nonisolated func info(_ message: String, category: LogCategory)
+    nonisolated func error(_ message: String, category: LogCategory)
+}
+
+enum LogCategory: String, Sendable {
+    case app = "App"
+    case endpoint = "Endpoint"
+    case auth = "Auth"
+    case telemetry = "Telemetry"
+    case ui = "UI"
+    case history = "History"
+}
+
+protocol Clock: Sendable {
+    nonisolated func now() -> Date
+}
+
+protocol Sleeping: Sendable {
+    func sleep(for duration: Duration) async throws
+}

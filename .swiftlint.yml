@@ -1,0 +1,36 @@
+included:
+  - DGXPulse
+  - DGXPulseTests
+excluded:
+  - DGXPulseUITests
+  - .build
+  - DerivedData
+
+disabled_rules:
+  - trailing_whitespace
+  - todo
+  - trailing_comma
+  - cyclomatic_complexity
+  - function_body_length
+  - type_body_length
+  - function_parameter_count
+  - opening_brace
+  - for_where
+  - optional_data_string_conversion
+
+opt_in_rules:
+  - empty_count
+  - force_unwrapping
+  - sorted_imports
+  - unhandled_throwing_task
+
+line_length: 120
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - x
+    - y
+    - to
+    - at
+reporter: "xcode"
