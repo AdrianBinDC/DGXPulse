@@ -12,3 +12,4 @@ Captured from the live DGX Dashboard exposed via NVIDIA Sync on localhost.
 | `gpu_telemetry_stream.sse` | SSE framing (`event` + `data`) as consumed by the dashboard stream client |
 | `nvsync_status_ephemeral.json` | `nvsync status <alias>` when remote `11000` is mapped to a non-default local port |
 | `nvsync_status_no_ports.json` | `nvsync status <alias>` while connected but before the dashboard tunnel is opened |
+| `nvsync_status_not_running.json` | `nvsync status <alias>` after sleep when the detached connect process is gone |

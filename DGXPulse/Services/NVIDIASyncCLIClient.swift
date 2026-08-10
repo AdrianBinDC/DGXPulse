@@ -1,43 +1,82 @@
 import Darwin
 import Foundation
 
-/// Talks to the NVIDIA Sync CLI (`nvsync status` / `nvsync open`).
+/// Talks to the NVIDIA Sync CLI (`nvsync status` / `connect` / `open`).
 ///
-/// Sync is the source of truth for ephemeral local ports. We do **not** scrape
-/// `lsof` or trust Sync's UI `openPorts` list (that list tracks remote ports).
+/// Sync is the source of truth for ephemeral local ports. After Mac sleep the
+/// detached `nvsync connect` process is often gone (`NOT_RUNNING`); DGXPulse
+/// restarts it, opens remote dashboard port `11000`, then reads `local_port`.
+/// Concurrent callers share one in-flight discovery so wake + stream retry
+/// do not race `connect` / `open`.
 final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable {
     private let logger: any Logging
     private let executableURL: URL?
     private let sshConfigURL: URL
     private let stateStoreURL: URL
     private let runCommand: @Sendable (URL, [String]) async -> CommandResult
+    private let connectSettleDelay: Duration
+    private let openSettleDelay: Duration
+    private let pollInterval: Duration
+    private let pollAttempts: Int
+
+    private let discoveryLock = NSLock()
+    private var inFlightDiscovery: Task<NVIDIASyncTunnelDiscovery, Never>?
 
     init(
         logger: any Logging,
         executableURL: URL? = NVIDIASyncCLILocator.executableURL(),
         sshConfigURL: URL = NVIDIASyncPaths.sshConfigURL,
         stateStoreURL: URL = NVIDIASyncPaths.stateStoreURL,
+        connectSettleDelay: Duration = DashboardPorts.syncConnectSettleDelay,
+        openSettleDelay: Duration = DashboardPorts.syncOpenSettleDelay,
+        pollInterval: Duration = DashboardPorts.syncTunnelPollInterval,
+        pollAttempts: Int = DashboardPorts.syncTunnelPollAttempts,
         runCommand: @escaping @Sendable (URL, [String]) async -> CommandResult = ProcessRunner.run
     ) {
         self.logger = logger
         self.executableURL = executableURL
         self.sshConfigURL = sshConfigURL
         self.stateStoreURL = stateStoreURL
+        self.connectSettleDelay = connectSettleDelay
+        self.openSettleDelay = openSettleDelay
+        self.pollInterval = pollInterval
+        self.pollAttempts = pollAttempts
         self.runCommand = runCommand
     }
 
-    func dashboardBaseURLs() async -> [URL] {
+    func discover() async -> NVIDIASyncTunnelDiscovery {
+        let task: Task<NVIDIASyncTunnelDiscovery, Never>
+        discoveryLock.lock()
+        if let inFlightDiscovery {
+            task = inFlightDiscovery
+            discoveryLock.unlock()
+            return await task.value
+        }
+        task = Task { await self.performDiscover() }
+        inFlightDiscovery = task
+        discoveryLock.unlock()
+
+        let result = await task.value
+        discoveryLock.lock()
+        if inFlightDiscovery == task {
+            inFlightDiscovery = nil
+        }
+        discoveryLock.unlock()
+        return result
+    }
+
+    private func performDiscover() async -> NVIDIASyncTunnelDiscovery {
+        let aliases = discoveredAliases()
         guard let executableURL else {
             logger.info(
                 "NVIDIA Sync CLI not found; skipping Sync tunnel discovery",
                 category: .endpoint
             )
-            return []
+            return NVIDIASyncTunnelDiscovery(hasConfiguredAliases: !aliases.isEmpty, urls: [])
         }
 
-        let aliases = discoveredAliases()
         guard !aliases.isEmpty else {
-            return []
+            return NVIDIASyncTunnelDiscovery(hasConfiguredAliases: false, urls: [])
         }
 
         var urls: [URL] = []
@@ -46,14 +85,37 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
                 urls.append(url)
             }
         }
-        return urls
+        return NVIDIASyncTunnelDiscovery(hasConfiguredAliases: true, urls: urls)
     }
 
     private func dashboardURL(for alias: String, executableURL: URL) async -> URL? {
-        for attempt in 0..<DashboardPorts.syncTunnelPollAttempts {
+        var didAttemptConnect = false
+        var didAttemptOpen = false
+
+        for attempt in 0..<pollAttempts {
             var status = await fetchStatus(alias: alias, executableURL: executableURL)
 
-            if status?.isRunning == true, status?.dashboardLocalPort == nil {
+            // After sleep, Sync's detached connect process is usually gone.
+            if !didAttemptConnect, status?.isRunning != true {
+                didAttemptConnect = true
+                logger.info(
+                    "Sync alias \(alias) is not running; starting detached connect",
+                    category: .endpoint
+                )
+                let connect = await runCommand(executableURL, ["connect", "--detach", alias])
+                if connect.exitCode != 0 {
+                    let detail = String(data: connect.stderr, encoding: .utf8) ?? ""
+                    logger.error(
+                        "nvsync connect --detach \(alias) failed (exit \(connect.exitCode)) \(detail)",
+                        category: .endpoint
+                    )
+                }
+                try? await Task.sleep(for: connectSettleDelay)
+                status = await fetchStatus(alias: alias, executableURL: executableURL)
+            }
+
+            if status?.isRunning == true, status?.dashboardLocalPort == nil, !didAttemptOpen {
+                didAttemptOpen = true
                 let remote = NVIDIASyncKnownPorts.remoteDashboard
                 logger.info(
                     "Sync alias \(alias) connected without dashboard tunnel; opening remote \(remote)",
@@ -63,6 +125,7 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
                     executableURL,
                     ["open", alias, String(NVIDIASyncKnownPorts.remoteDashboard)]
                 )
+                try? await Task.sleep(for: openSettleDelay)
                 status = await fetchStatus(alias: alias, executableURL: executableURL)
             }
 
@@ -76,7 +139,7 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
             }
 
             let connection = status?.connectionStatus ?? "unavailable"
-            let isLastAttempt = attempt == DashboardPorts.syncTunnelPollAttempts - 1
+            let isLastAttempt = attempt == pollAttempts - 1
             if isLastAttempt {
                 logger.info(
                     "Sync alias \(alias) has no open dashboard tunnel (status=\(connection))",
@@ -89,7 +152,7 @@ final class NVIDIASyncCLIClient: NVIDIASyncTunnelProviding, @unchecked Sendable 
                 "Sync alias \(alias) not ready (status=\(connection)); retrying…",
                 category: .endpoint
             )
-            try? await Task.sleep(for: DashboardPorts.syncTunnelPollInterval)
+            try? await Task.sleep(for: pollInterval)
         }
 
         return nil
@@ -259,6 +322,14 @@ nonisolated enum ProcessRunner {
 }
 
 struct StaticNVIDIASyncTunnelProvider: NVIDIASyncTunnelProviding {
-    let urls: [URL]
-    func dashboardBaseURLs() async -> [URL] { urls }
+    let discovery: NVIDIASyncTunnelDiscovery
+
+    init(urls: [URL], hasConfiguredAliases: Bool = false) {
+        self.discovery = NVIDIASyncTunnelDiscovery(
+            hasConfiguredAliases: hasConfiguredAliases || !urls.isEmpty,
+            urls: urls
+        )
+    }
+
+    func discover() async -> NVIDIASyncTunnelDiscovery { discovery }
 }

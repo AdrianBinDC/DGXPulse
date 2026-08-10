@@ -12,7 +12,14 @@ protocol EndpointResolving: Sendable {
 
 /// Discovers the local DGX Dashboard URL that NVIDIA Sync is currently tunneling.
 protocol NVIDIASyncTunnelProviding: Sendable {
-    func dashboardBaseURLs() async -> [URL]
+    func discover() async -> NVIDIASyncTunnelDiscovery
+}
+
+nonisolated struct NVIDIASyncTunnelDiscovery: Sendable, Equatable {
+    /// True when Sync device aliases exist on this Mac.
+    var hasConfiguredAliases: Bool
+    /// Live local dashboard base URLs (usually one).
+    var urls: [URL]
 }
 
 protocol AuthSessionStoring: Sendable {

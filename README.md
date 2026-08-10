@@ -8,7 +8,7 @@ Native macOS menu bar monitor for your [NVIDIA DGX Spark](https://www.nvidia.com
 - [NVIDIA Sync](https://docs.nvidia.com/sync/latest/index.html) connected to your Spark (LAN or Tailscale), **or** a manual tunnel to the dashboard
 - DGX Dashboard credentials (same as the web UI)
 
-DGXPulse is **not App Sandboxed**. It needs to read NVIDIA Sync’s local device config and run the Sync CLI (`nvsync status`) to learn which localhost port currently maps to the remote dashboard. That is intentional for a local companion utility.
+DGXPulse is **not App Sandboxed**. It needs to read NVIDIA Sync’s local device config and run the Sync CLI (`nvsync status` / `connect` / `open`) to learn which localhost port currently maps to the remote dashboard. That is intentional for a local companion utility.
 
 ## First run
 
@@ -31,7 +31,15 @@ DGXPulse asks Sync for the mapping via the Sync CLI:
 nvsync status <device-alias>
 ```
 
-Example response (trimmed):
+After Mac sleep, Sync often reports `NOT_RUNNING` (the detached connect process died). DGXPulse then runs:
+
+```bash
+nvsync connect --detach <device-alias>
+nvsync open <device-alias> 11000   # if the dashboard tunnel is not open yet
+nvsync status <device-alias>
+```
+
+Example status when the tunnel is ready (trimmed):
 
 ```json
 {
@@ -45,9 +53,9 @@ Example response (trimmed):
 Discovery order:
 
 1. Base URL override from Preferences (if set)
-2. Sync CLI local port for remote `11000`
+2. Sync CLI local port for remote `11000` (reconnect + open as needed)
 3. Last working URL (re-verified)
-4. Manual tunnel default `http://127.0.0.1:11000`
+4. Manual tunnel default `http://127.0.0.1:11000` — only when Sync is not configured on this Mac
 
 On Mac wake, stream failure, or stale telemetry, DGXPulse forgets the old URL and resolves again.
 

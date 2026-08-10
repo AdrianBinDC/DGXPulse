@@ -1,0 +1,13 @@
+{
+  "status": "NOT_RUNNING",
+  "error": "",
+  "dialer": "",
+  "dashboard_installed": false,
+  "tailscale": {
+    "error": null,
+    "enrolled": false,
+    "name": "",
+    "auth_expiry": null
+  },
+  "ports": {}
+}

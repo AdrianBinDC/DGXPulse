@@ -8,11 +8,18 @@ nonisolated enum DashboardPorts {
     static let telemetryIdleTimeout: Duration = .seconds(30)
     /// Treat menu-bar samples older than this as stale after sleep/disconnect.
     static let sampleStaleInterval: TimeInterval = 45
-    /// Give NVIDIA Sync time to rebind tunnels after Mac wake before rediscovering.
-    static let postWakeSettleDelay: Duration = .seconds(4)
-    /// How long Sync tunnel discovery will poll while the device is reconnecting.
-    static let syncTunnelPollAttempts = 5
+    /// Give NVIDIA Sync time to come back after Mac wake before rediscovering.
+    static let postWakeSettleDelay: Duration = .seconds(6)
+    /// Poll window while Sync reconnects / opens the dashboard tunnel after sleep.
+    static let syncTunnelPollAttempts = 12
     static let syncTunnelPollInterval: Duration = .seconds(2)
+    /// Pause after issuing `nvsync connect --detach` before the first status poll.
+    static let syncConnectSettleDelay: Duration = .seconds(3)
+    /// Pause after `nvsync open` before trusting the mapped local port.
+    static let syncOpenSettleDelay: Duration = .milliseconds(750)
+    /// Sync marks tunnels OPENED before HTTP answers; probe a few times.
+    static let dashboardReadinessAttempts = 8
+    static let dashboardReadinessInterval: Duration = .milliseconds(500)
 }
 
 nonisolated enum AppPreferenceKey {

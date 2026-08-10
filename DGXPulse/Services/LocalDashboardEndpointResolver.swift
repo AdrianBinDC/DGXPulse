@@ -4,28 +4,34 @@ import Foundation
 ///
 /// Discovery order:
 /// 1. Explicit user override
-/// 2. NVIDIA Sync CLI (`nvsync status`) — authoritative local port for remote `11000`
+/// 2. NVIDIA Sync CLI (`connect` / `status` / `open`) — authoritative local port for remote `11000`
 /// 3. Last working URL (verified still serving the dashboard)
-/// 4. Manual-tunnel default `http://127.0.0.1:11000`
+/// 4. Manual-tunnel default `http://127.0.0.1:11000` — only when Sync is not configured
 final class LocalDashboardEndpointResolver: EndpointResolving, @unchecked Sendable {
     private let http: any HTTPClient
     private let preferences: PreferenceStore
     private let logger: any Logging
     private let syncTunnels: any NVIDIASyncTunnelProviding
     private let manualTunnelPorts: [Int]
+    private let readinessAttempts: Int
+    private let readinessInterval: Duration
 
     init(
         http: any HTTPClient,
         preferences: PreferenceStore = PreferenceStore(),
         logger: any Logging,
         syncTunnels: any NVIDIASyncTunnelProviding,
-        manualTunnelPorts: [Int] = [DashboardPorts.default]
+        manualTunnelPorts: [Int] = [DashboardPorts.default],
+        readinessAttempts: Int = DashboardPorts.dashboardReadinessAttempts,
+        readinessInterval: Duration = DashboardPorts.dashboardReadinessInterval
     ) {
         self.http = http
         self.preferences = preferences
         self.logger = logger
         self.syncTunnels = syncTunnels
         self.manualTunnelPorts = manualTunnelPorts
+        self.readinessAttempts = max(1, readinessAttempts)
+        self.readinessInterval = readinessInterval
     }
 
     func resolve() async throws -> URL {
@@ -35,24 +41,35 @@ final class LocalDashboardEndpointResolver: EndpointResolving, @unchecked Sendab
             candidates.append(override)
         }
 
-        let syncURLs = await syncTunnels.dashboardBaseURLs()
-        candidates.append(contentsOf: syncURLs)
+        let discovery = await syncTunnels.discover()
+        let syncURLKeys = Set(discovery.urls.map(\.absoluteString))
+        candidates.append(contentsOf: discovery.urls)
 
         if let lastKnown = preferences.lastKnownBaseURL {
             candidates.append(lastKnown)
         }
 
-        for port in manualTunnelPorts {
-            if let url = URL(string: "http://127.0.0.1:\(port)") {
-                candidates.append(url)
+        // Manual `11000` is for users who tunnel without NVIDIA Sync. When Sync
+        // aliases exist, probing dead `:11000` after sleep only floods refused-connection logs.
+        if !discovery.hasConfiguredAliases {
+            for port in manualTunnelPorts {
+                if let url = URL(string: "http://127.0.0.1:\(port)") {
+                    candidates.append(url)
+                }
             }
+        } else if discovery.urls.isEmpty {
+            logger.info(
+                "NVIDIA Sync is configured but no dashboard tunnel is open yet",
+                category: .endpoint
+            )
         }
 
         var seen = Set<String>()
         let unique = candidates.filter { seen.insert($0.absoluteString).inserted }
 
         for candidate in unique {
-            if await isDashboard(at: candidate) {
+            let attempts = syncURLKeys.contains(candidate.absoluteString) ? readinessAttempts : 1
+            if await waitForDashboard(at: candidate, attempts: attempts) {
                 logger.info("Resolved dashboard at \(candidate.absoluteString)", category: .endpoint)
                 preferences.lastKnownBaseURL = candidate
                 return candidate
@@ -74,6 +91,23 @@ final class LocalDashboardEndpointResolver: EndpointResolving, @unchecked Sendab
     func rememberSuccessfulEndpoint(_ url: URL) async {
         preferences.lastKnownBaseURL = url
         logger.info("Remembered dashboard endpoint \(url.absoluteString)", category: .endpoint)
+    }
+
+    private func waitForDashboard(at baseURL: URL, attempts: Int) async -> Bool {
+        for attempt in 0..<attempts {
+            if await isDashboard(at: baseURL) {
+                return true
+            }
+            let isLast = attempt == attempts - 1
+            if !isLast {
+                logger.info(
+                    "Dashboard not ready at \(baseURL.absoluteString); waiting…",
+                    category: .endpoint
+                )
+                try? await Task.sleep(for: readinessInterval)
+            }
+        }
+        return false
     }
 
     private func isDashboard(at baseURL: URL) async -> Bool {
