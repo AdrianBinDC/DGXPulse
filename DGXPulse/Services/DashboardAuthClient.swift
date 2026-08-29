@@ -18,26 +18,39 @@ struct DashboardAuthClient: Sendable {
             "password": password,
         ])
 
-        logger.info("Signing in to dashboard", category: .auth)
+        let loginURL = request.url?.absoluteString ?? "api/login"
+        logger.info("Signing in to dashboard POST \(loginURL)", category: .auth)
 
         let (data, response) = try await http.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
+            logger.error("Login returned a non-HTTP response", category: .auth)
             throw ConnectionFailure.server("Invalid login response.")
         }
+
+        logger.info("Login HTTP \(httpResponse.statusCode)", category: .auth)
 
         if httpResponse.statusCode == 401 {
             throw ConnectionFailure.loginFailed("Login failed. Check your credentials.")
         }
 
         guard httpResponse.statusCode == 200 else {
+            logger.error("Login failed \(JSONDiagnostics.summarize(data))", category: .auth)
             if let errorBody = try? JSONDecoder().decode(DashboardErrorResponse.self, from: data) {
                 throw ConnectionFailure.loginFailed(errorBody.error)
             }
             throw ConnectionFailure.loginFailed("Login failed (HTTP \(httpResponse.statusCode)).")
         }
 
-        let login = try JSONDecoder().decode(LoginResponse.self, from: data)
-        logger.info("Login succeeded", category: .auth)
-        return login.token
+        do {
+            let login = try JSONDecoder().decode(LoginResponse.self, from: data)
+            logger.info("Login succeeded", category: .auth)
+            return login.token
+        } catch {
+            logger.error(
+                "Login JSON decode failed: \(JSONDiagnostics.describe(error)) \(JSONDiagnostics.summarize(data))",
+                category: .auth
+            )
+            throw ConnectionFailure.server("Invalid login response.")
+        }
     }
 }

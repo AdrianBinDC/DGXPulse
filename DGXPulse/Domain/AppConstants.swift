@@ -6,6 +6,8 @@ nonisolated enum DashboardPorts {
     static let jupyterDefault = 11_002
     /// Max silence on the telemetry stream before forcing reconnect.
     static let telemetryIdleTimeout: Duration = .seconds(30)
+    /// How often to emit a live-sample heartbeat to the diagnostics log.
+    static let telemetryHeartbeatInterval: TimeInterval = 60
     /// Treat menu-bar samples older than this as stale after sleep/disconnect.
     static let sampleStaleInterval: TimeInterval = 45
     /// Give NVIDIA Sync time to come back after Mac wake before rediscovering.

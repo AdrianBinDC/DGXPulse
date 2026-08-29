@@ -68,6 +68,7 @@ struct DiagnosticsView: View {
                 Text("Diagnostics").font(.headline)
                 Spacer()
                 Button("Refresh") { viewModel.refreshDiagnostics() }
+                Button("Copy") { viewModel.copyDiagnostics() }
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {

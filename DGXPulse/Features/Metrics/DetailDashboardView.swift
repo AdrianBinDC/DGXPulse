@@ -6,27 +6,12 @@ struct DetailDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Welcome")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Your DGX Dashboard")
-                            .font(.largeTitle.bold())
-                    }
-
-                    Spacer()
-
-                    Picker("Range", selection: $viewModel.selectedHistoryRange) {
-                        ForEach(HistoryRange.allCases) { range in
-                            Text(range.title).tag(range)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 360)
-                    .onChange(of: viewModel.selectedHistoryRange) { _, _ in
-                        viewModel.historyRangeChanged()
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Welcome")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("Your DGX Dashboard")
+                        .font(.largeTitle.bold())
                 }
 
                 statusBanner
@@ -64,11 +49,11 @@ struct DetailDashboardView: View {
     }
 
     private var memoryTotalGB: Double {
-        viewModel.latestSample?.memoryTotalGB ?? 128
+        viewModel.latestSample?.memoryTotalGB ?? 0
     }
 
     private var memoryChartYLabel: String {
-        "\(Int(memoryTotalGB.rounded()))GB"
+        String(format: "%.2f GB", memoryTotalGB)
     }
 
     private var statusBanner: some View {
@@ -84,7 +69,7 @@ struct DetailDashboardView: View {
 
     private var memorySecondary: String {
         guard let sample = viewModel.latestSample else { return "— GB total" }
-        return "\(Int(sample.memoryTotalGB.rounded())) GB total"
+        return String(format: "%.2f GB total", sample.memoryTotalGB)
     }
 
     private var gpuPrimary: String {

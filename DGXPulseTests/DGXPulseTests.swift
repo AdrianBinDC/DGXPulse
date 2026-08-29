@@ -18,12 +18,47 @@ enum FixtureData {
 struct TelemetryParserTests {
     @Test func parsesLiveGpuTelemetryFixture() throws {
         let data = try FixtureData.load("gpu_telemetry.json")
-        let sample = try TelemetryParser.parseSample(from: data, at: Date(timeIntervalSince1970: 0))
+        let parsed = try TelemetryParser.parse(data, at: Date(timeIntervalSince1970: 0))
+        let sample = parsed.sample
         #expect(sample.gpuUtilizationPercent == 0)
         #expect(sample.memoryTotalMB == 131_072)
         #expect(sample.memoryUsedMB == 131_072 - 27_302)
-        #expect(abs(sample.memoryUsedGB - 103.77) < 0.01)
-        #expect(abs(sample.memoryTotalGB - 128) < 0.001)
+        // Dashboard `GB` = KiB * 1024 / 1e9; `GiB` = KiB / 1048576.
+        #expect(abs(sample.memoryTotalGiB - 128) < 0.001)
+        #expect(abs(sample.memoryTotalGB - 137.438_953_472) < 0.000_001)
+        #expect(abs(sample.memoryUsedGiB - (103_770 / 1_024)) < 0.000_001)
+        #expect(abs(sample.memoryUsedGB - 108.810_731_52) < 0.000_001)
+        #expect(parsed.memoryFields == .kibibytes)
+    }
+
+    @Test func parsesLegacyMegabyteTelemetryFields() throws {
+        let json = try FixtureData.load("gpu_telemetry_legacy_mb.json")
+        let parsed = try TelemetryParser.parse(json, at: Date(timeIntervalSince1970: 0))
+        #expect(parsed.memoryFields == .megabytes)
+        #expect(parsed.sample.gpuUtilizationPercent == 12)
+        #expect(parsed.sample.memoryTotalMB == 131_072)
+        #expect(parsed.sample.memoryUsedMB == 131_072 - 27_302)
+    }
+
+    @Test func summarizesLiveTelemetryKeysForDiagnostics() throws {
+        let data = try FixtureData.load("gpu_telemetry.json")
+        let summary = JSONDiagnostics.summarize(data)
+        #expect(summary.contains("memory_total_in_kib"))
+        #expect(summary.contains("memory_available_in_kib"))
+        #expect(summary.contains("percentage_utilization"))
+        #expect(!summary.contains("memory_total_in_mb"))
+    }
+
+    @Test func describesMissingTelemetryKeys() {
+        let json = Data(#"{"TelemetryForGPUs":[{}]}"#.utf8)
+        do {
+            _ = try TelemetryParser.parse(json, at: Date(timeIntervalSince1970: 0))
+            Issue.record("Expected decode to fail")
+        } catch {
+            let description = JSONDiagnostics.describe(error)
+            #expect(description.contains("missing"))
+            #expect(description.contains("percentage_utilization") || description.contains("memory_"))
+        }
     }
 
     @Test func parsesLoginSuccessFixture() throws {

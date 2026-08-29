@@ -30,21 +30,34 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
                     // Prefer session-level request timeout; keep request timeout generous.
                     request.timeoutInterval = 60
 
-                    logger.debug("Opening telemetry stream", category: .telemetry)
+                    let streamURL = request.url?.absoluteString ?? "api/v1/gpu_telemetry/stream"
+                    logger.info("Opening telemetry stream \(streamURL)", category: .telemetry)
                     let (bytes, response) = try await http.bytes(for: request)
                     guard let httpResponse = response as? HTTPURLResponse else {
+                        logger.error("Telemetry stream returned a non-HTTP response", category: .telemetry)
                         continuation.yield(.failure(.server("Invalid telemetry response.")))
                         continuation.finish()
                         return
                     }
 
+                    let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "none"
+                    logger.info(
+                        "Telemetry stream HTTP \(httpResponse.statusCode) Content-Type=\(contentType)",
+                        category: .telemetry
+                    )
+
                     if httpResponse.statusCode == 401 {
+                        logger.error("Telemetry stream unauthorized", category: .telemetry)
                         continuation.yield(.failure(.unauthorized))
                         continuation.finish()
                         return
                     }
 
                     guard httpResponse.statusCode == 200 else {
+                        logger.error(
+                            "Unable to open telemetry stream (HTTP \(httpResponse.statusCode))",
+                            category: .telemetry
+                        )
                         continuation.yield(
                             .failure(
                                 .server(
@@ -138,6 +151,14 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
         var dataLines: [String] = []
         var lineBuffer: [UInt8] = []
         var previousWasCR = false
+        let stats = TelemetryStreamStats(now: clock.now())
+        defer {
+            logger.info(
+                "Telemetry stream closed samples=\(stats.acceptedSamples) "
+                    + "malformed=\(stats.malformedEvents) ignored=\(stats.ignoredEvents)",
+                category: .telemetry
+            )
+        }
 
         for try await byte in bytes {
             try Task.checkCancellation()
@@ -151,6 +172,7 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
                     line,
                     eventName: &eventName,
                     dataLines: &dataLines,
+                    stats: stats,
                     clock: clock,
                     logger: logger,
                     continuation: continuation
@@ -166,6 +188,7 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
                     line,
                     eventName: &eventName,
                     dataLines: &dataLines,
+                    stats: stats,
                     clock: clock,
                     logger: logger,
                     continuation: continuation
@@ -181,6 +204,7 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
         _ line: String,
         eventName: inout String,
         dataLines: inout [String],
+        stats: TelemetryStreamStats,
         clock: any Clock,
         logger: any Logging,
         continuation: AsyncStream<MetricsEvent>.Continuation
@@ -194,20 +218,35 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
             switch eventName {
             case "gpu_telemetry", "":
                 do {
-                    let sample = try TelemetryParser.parseSample(from: data, at: clock.now())
-                    continuation.yield(.sample(sample))
+                    let parsed = try TelemetryParser.parse(data, at: clock.now())
+                    stats.acceptedSamples += 1
+                    logAcceptedSample(parsed, stats: stats, clock: clock, logger: logger)
+                    continuation.yield(.sample(parsed.sample))
                 } catch {
-                    logger.error("Malformed telemetry payload", category: .telemetry)
+                    stats.malformedEvents += 1
+                    logMalformedPayload(data, error: error, stats: stats, logger: logger)
                     continuation.yield(.failure(.malformedTelemetry))
                 }
             case "error":
+                logger.error(
+                    "Telemetry SSE error event \(JSONDiagnostics.summarize(data))",
+                    category: .telemetry
+                )
                 if let body = try? JSONDecoder().decode(DashboardErrorResponse.self, from: data) {
                     continuation.yield(.failure(.server(body.error)))
                 } else {
                     continuation.yield(.failure(.server("Telemetry stream error.")))
                 }
             default:
-                logger.debug("Ignoring SSE event '\(eventName)'", category: .telemetry)
+                stats.ignoredEvents += 1
+                if stats.seenIgnoredEventNames.insert(eventName).inserted {
+                    logger.info(
+                        "Ignoring SSE event '\(eventName)' \(JSONDiagnostics.summarize(data))",
+                        category: .telemetry
+                    )
+                } else {
+                    logger.debug("Ignoring SSE event '\(eventName)'", category: .telemetry)
+                }
             }
             eventName = ""
             dataLines.removeAll(keepingCapacity: true)
@@ -235,6 +274,73 @@ nonisolated struct DashboardSSEMetricsSource: MetricsSource {
         var bytes = bytes
         if bytes.last == 0x0D { bytes.removeLast() }
         return String(decoding: bytes, as: UTF8.self)
+    }
+
+    private static func logAcceptedSample(
+        _ parsed: ParsedTelemetry,
+        stats: TelemetryStreamStats,
+        clock: any Clock,
+        logger: any Logging
+    ) {
+        let sample = parsed.sample
+        let gpu = Int(sample.gpuUtilizationPercent.rounded())
+        let ram = Int(sample.memoryUtilizationPercent.rounded())
+        if !stats.loggedFirstSample {
+            stats.loggedFirstSample = true
+            logger.info(
+                "First telemetry sample fields=\(parsed.memoryFields.rawValue) "
+                    + "gpu=\(gpu)% ram=\(ram)% "
+                    + "usedMB=\(Int(sample.memoryUsedMB.rounded())) "
+                    + "totalMB=\(Int(sample.memoryTotalMB.rounded()))",
+                category: .telemetry
+            )
+            stats.lastHeartbeat = clock.now()
+            return
+        }
+        let now = clock.now()
+        guard now.timeIntervalSince(stats.lastHeartbeat) >= DashboardPorts.telemetryHeartbeatInterval
+        else { return }
+        stats.lastHeartbeat = now
+        logger.info(
+            "Telemetry heartbeat gpu=\(gpu)% ram=\(ram)% samples=\(stats.acceptedSamples)",
+            category: .telemetry
+        )
+    }
+
+    private static func logMalformedPayload(
+        _ data: Data,
+        error: Error,
+        stats: TelemetryStreamStats,
+        logger: any Logging
+    ) {
+        if !stats.loggedFirstMalformed {
+            stats.loggedFirstMalformed = true
+            logger.error(
+                "Malformed telemetry: \(JSONDiagnostics.describe(error)) \(JSONDiagnostics.summarize(data))",
+                category: .telemetry
+            )
+            return
+        }
+        if stats.malformedEvents.isMultiple(of: 25) {
+            logger.error(
+                "Skipped \(stats.malformedEvents) malformed telemetry events",
+                category: .telemetry
+            )
+        }
+    }
+}
+
+private final class TelemetryStreamStats: @unchecked Sendable {
+    var acceptedSamples = 0
+    var malformedEvents = 0
+    var ignoredEvents = 0
+    var loggedFirstSample = false
+    var loggedFirstMalformed = false
+    var seenIgnoredEventNames: Set<String> = []
+    var lastHeartbeat: Date
+
+    init(now: Date) {
+        lastHeartbeat = now
     }
 }
 

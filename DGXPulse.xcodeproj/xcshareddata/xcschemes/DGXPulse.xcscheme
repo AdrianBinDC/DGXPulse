@@ -34,7 +34,7 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "555A645B3028390700242E29"
+               BlueprintIdentifier = "555A645E3028390700242E29"
                BuildableName = "DGXPulseTests.xctest"
                BlueprintName = "DGXPulseTests"
                ReferencedContainer = "container:DGXPulse.xcodeproj">

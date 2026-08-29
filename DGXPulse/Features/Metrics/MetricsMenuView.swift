@@ -67,8 +67,8 @@ struct MetricsMenuView: View {
 
             if let sample = viewModel.latestSample {
                 let ram = Int(sample.memoryUtilizationPercent.rounded())
-                let used = String(format: "%.1f", sample.memoryUsedGB)
-                let total = String(format: "%.0f", sample.memoryTotalGB)
+                let used = String(format: "%.2f", sample.memoryUsedGB)
+                let total = String(format: "%.2f", sample.memoryTotalGB)
                 Text("RAM \(ram)% · \(used) / \(total) GB")
                     .font(.caption.monospacedDigit())
                 Text("GPU \(Int(sample.gpuUtilizationPercent.rounded()))%")

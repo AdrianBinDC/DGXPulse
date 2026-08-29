@@ -2,8 +2,8 @@
   "TelemetryForGPUs": [
     {
       "percentage_utilization": 0.0,
-      "memory_total_in_mb": 131072.0,
-      "memory_available_in_mb": 27302.0
+      "memory_total_in_kib": 134217728.0,
+      "memory_available_in_kib": 27957248.0
     }
   ]
 }

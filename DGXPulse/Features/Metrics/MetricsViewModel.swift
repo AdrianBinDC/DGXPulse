@@ -151,13 +151,14 @@ final class MetricsViewModel {
         }
     }
 
-    func openDetail() {
-        isDetailPresented = true
-        Task { await refreshHistory() }
+    func copyDiagnostics() {
+        let text = diagnostics.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
-    func historyRangeChanged() {
-        dependencies.preferences.historyRange = selectedHistoryRange
+    func openDetail() {
+        isDetailPresented = true
         Task { await refreshHistory() }
     }
 
@@ -248,10 +249,6 @@ final class MetricsViewModel {
                                 return
                             }
                             if failure == .malformedTelemetry {
-                                self.dependencies.logger.error(
-                                    "Ignoring malformed telemetry event",
-                                    category: .telemetry
-                                )
                                 continue
                             }
                             throw failure

@@ -8,7 +8,8 @@ Captured from the live DGX Dashboard exposed via NVIDIA Sync on localhost.
 | `unauthorized_updates.json` | `GET /api/v1/updates/available` without `Authorization` |
 | `login_failure.json` | `POST /api/login` with invalid credentials |
 | `login_success.json` | Shape of `POST /api/login` success (`token` key); value redacted |
-| `gpu_telemetry.json` | `gpu_telemetry` SSE `data` payload field names from the live dashboard client (`TelemetryForGPUs`, `percentage_utilization`, `memory_total_in_mb`, `memory_available_in_mb`); values match a live dashboard screenshot |
+| `gpu_telemetry.json` | `gpu_telemetry` SSE `data` payload field names from the live dashboard client (`TelemetryForGPUs`, `percentage_utilization`, `memory_total_in_kib`, `memory_available_in_kib`) |
+| `gpu_telemetry_legacy_mb.json` | Pre-rename payload with `memory_total_in_mb` / `memory_available_in_mb` |
 | `gpu_telemetry_stream.sse` | SSE framing (`event` + `data`) as consumed by the dashboard stream client |
 | `nvsync_status_ephemeral.json` | `nvsync status <alias>` when remote `11000` is mapped to a non-default local port |
 | `nvsync_status_no_ports.json` | `nvsync status <alias>` while connected but before the dashboard tunnel is opened |
